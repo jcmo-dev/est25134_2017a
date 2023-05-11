@@ -1,0 +1,173 @@
+---
+title: "S07 - Clasificacion supervisada"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+require("dplyr")
+require("ggplot2")
+```
+
+# Analitica empirica
+
+## Ejemplo 2: Embarazos prematuros
+
+La segunda observacion consiste en un conjunto de datos de embarazos prematuros $Y\in\{0,1\}$ considerando la dosis de un medicamento `dde`, etiquetada como `X` en los datos, y cuatro estimulos adicionales $(Z_1,Z_2, Z_3,Z_4)$.
+
+Los datos estan disponibles en el repositorio del curso.
+
+```{r ex1_sim, include=FALSE}
+githubURL <- "https://github.com/jcmartinezovando/est25134_2017a/raw/master/datos/pregnancy.RData"
+
+# En Windows
+load(url(githubURL))
+ls()
+```
+
+Los estimulos y atributos estan relacionados de manera separable, como se muestra en la siguiente grafica *-noten que la separacion en este caso no es distinguible y no es  necesariamente lineal-*.
+
+```{r ex1_data}
+Y <- datos$Y
+X <- datos[, c("X","Z1","Z2","Z3","Z4")]
+
+plot(X)
+
+table(Y)
+plot(X$X, X$Z1, col=Y+3)
+plot(X$X, X$Z2, col=Y+3)
+plot(X$X, X$Z3, col=Y+3)
+plot(X$X, X$Z4, col=Y+3)
+cor(X)
+summary(X)
+```
+
+_Notemos que los datos en las $X$s (covariables) han sido ya estandarizados. Esta es una practica comun para el ajuste de modelos $GLM$._
+
+La implementacion de los modelos que usaremos en esta sesion require de los paqutes `broom` y `biglm` de R:
+```
+install.packages("broom")
+install.packages("biglm")
+```
+
+* El paquete `broom` convierte los resultados de un modelo en la forma de un `data.frame`, de forma que podemos recuperar sus resultados por componente rapida y sencillamente (noten que esta funcionalidad solo es valida cuando tenemos modelos con salidas "tipicas" de R).
+
+* El paquete `biglm` implementa modelos lineales generalizados con una reduccion significativa del uso de memoria, por lo que puede implementarse en bases de datos "grandes".
+
+### Datos `train` y `test`
+
+Construimos la muestra de `entrenamiento` (o `train`) y la muestra de `prueba` (o `test`).
+
+Las definimos de tal forma que la muestra de prueba sea aproximadamente el 10 por ciento de la muestra completa. Y eso lo hacemos proporcionalmente dentro de las dos clases de posibles valores de $Y$ en la muestra completa. La seleccion de las muestra se obtiene aleatoriamente sin remplazo.
+
+```{r trainset}
+indice1 <- which(Y==1)
+indice0 <- which(Y==0)
+
+length(indice1)
+length(indice0)
+
+set.seed(33)
+indice1train <- sample(indice1,300,replace=FALSE) 
+indice0train <- sample(indice0,1800,replace=FALSE) 
+
+Y.train <- Y[c(indice1train,indice0train)]
+Y.test <- Y[-c(indice1train,indice0train)]
+X.train <- X[c(indice1train,indice0train),]
+X.test <- X[-c(indice1train,indice0train),]
+```
+
+### Aprendizaje estadistico
+
+a) Aprendemos del modelo empleando `Y.train` y `X.train` definidas anteriormente. Empleamos en este caso el algoritmo `biglm`.
+
+Aunque no es necesario, en este caso, ilustramos como implementar `biglm` en varias etapas (como se emplearia cuando tenememos un conjunto de datos significativamente "grande").
+
+```{r biglm}
+table(Y.train)
+train <- cbind(Y.train,X.train)
+summary(train)
+head(train)
+
+# GLM convencional
+formula <- Y.train~1+X+Z1+Z2+Z3+Z4
+
+# Logit 
+logit.fit <- glm(formula,
+                   data=train,
+                   family=binomial(link = "logit"))
+summary(logit.fit)
+# Probit
+probit.fit <- glm(formula,
+                   data=train,
+                   family=binomial(link = "probit"))
+summary(probit.fit)
+
+## bigGLM
+#require("biglm")
+## Logit 
+#logit.bigfit <- bigglm(formula,
+#                   data=train,
+#                   family=binomial(link = "logit"),
+#                   chunksize = 10, sandwich = TRUE)
+#summary(logit.bigfit)
+## Probit
+#probit.bigfit <- bigglm(formula,
+#                   data=train,
+#                   family=binomial(link = "probit"))
+#summary(probit.bigfit)
+```
+
+Ahora realizamos algunas predicciones...
+
+```{r prediction}
+
+# Test
+test <- cbind(Y.test,X.test)
+summary(test)
+head(test)
+
+# Prediccion
+
+# Logit
+logit.test <- as.data.frame(predict(logit.fit, test, type="response"))
+summary(logit.test)
+
+# Probit
+probit.test <- as.data.frame(predict(probit.fit, test, type="response"))
+summary(probit.test)
+
+```
+
+### Estimacion por remuestreo 
+
+En este apratado implementamos un procedimiento de remuestro sobre el aprendizaje con los datos de `entrenamiento` empleando el paquete `broom`. 
+
+Con el siguiente script generamos un `data.frame` con los valores estimados de los coeficientes de los modelos con base para cada una de las muestras `boostrap`.
+
+```{r resample}
+require("dplyr")
+require("broom")
+
+boot.sample <- 100
+
+# Logit
+logit.boot <-train %>% 
+              bootstrap(boot.sample) %>% 
+              do(tidy(glm(formula, ., family=binomial(link = "logit"))))
+head(logit.boot)
+
+# Probit
+probit.boot <-train %>% 
+              bootstrap(boot.sample) %>% 
+              do(tidy(glm(formula, ., family=binomial(link = "probit"))))
+head(probit.boot)
+```
+
+
+# Referencias
+
+* Introduccion a "boostrap" del libro  _An Introduction to the Bootstrap_ de B. Efron & R. Tibshirani (1993) <a href="https://www.hms.harvard.edu/bss/neuro/bornlab/nb204/statistics/bootstrap.pdf">[liga]</a>

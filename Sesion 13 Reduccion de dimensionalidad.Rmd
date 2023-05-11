@@ -1,0 +1,317 @@
+---
+title: "Sesion 13: Reduccion de dimensionalidad"
+author: "Juan Carlos Martinez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### **Resumen y objetivos**
+
+* Entenderemos los fundamentos algebraicos del _analisis de componentes principales (o PCA)_.
+
+* Estudiaremos el aspecto inferencial relacionado con el ACP.
+
+* Veremos algunos ejemplos practicos (datos simulados e imagenes).
+
+# Introduccion
+
+El _analisis de componentes principales_ (o PCA por sus siglas en ingles) es una de las tecnicas de _reduccion de dimensionalidad_ mas empleada en la practica.
+
+Se emplea en diferentes contextos, por ejemplo:
+
+a. Ortogonalizar datos (matrices)
+
+b. Definir modelos de regresion donde $Y=M\beta + \varepsilon$, donde $M$ es un conjunto de componentes de componentes principales de los datos originales $X$
+
+c. Procesamiento y reconstruccion de se;ales e imagenes
+
+d. Construccion de indices (sobre todo en las ciencias sociales)
+
+e. Otras muchas aplicaciones...
+
+Junto con el PCA, en _analisis de factores_ (o FA) es el otro metodo de reduccion de dimensionalidad y ortogonalizacion.
+
+Ambos metodos son muy similares, salvo que PCA ha sido tratado principalmente considerando su aspecto geometrico --el cual resulta ser muy intuitito-- pero dejando de lado su aspecto inferencial.
+
+Por otro lado, el FA esta formulado en terminos de su aspecto inferencial, empleando *variables latentes*.
+
+**En esta sesion, exploraremos el aspecto inferencial comun que comparten ambos metodos.**
+
+Emplearemos las siguientes librerias en esta sesion:
+
+```
+# ripa
+install.packages("ripa", dependencies=c("Depends", "Suggests"))
+# EBImage
+source("http://bioconductor.org/biocLite.R")
+biocLite("EBImage")
+# kernel
+require("kernlab")
+```
+
+## A. Componentes principales
+
+El analisis de componentres principales PCA es una transformación lineal ortogonal que transforma los `datos` en un nuevo conjunto de coordenadas de tal manera que la mayor varianza por cualquier proyección de los datos viene a situarse en la primera coordenada (llamada el `primer componente principal`), la segunda mayor varianza en la segunda coordenada, y así sucesivamente. En este sentido, PCA calcula la base más significativa para expresar nuestros datos. Recuerde que una base es un conjunto de vectores linealmente independientes, que, en una combinación lineal, pueden representar cada vector (forman un sistema de coordenadas).
+
+Un hecho importante: _PCA devuelve una nueva base que es una combinación lineal de la base original_. Esto limita el número de posible bases que PCA puede encontrar.
+
+Por lo tanto, si $X$ es el conjunto de datos original, $Y$ es el conjunto de datos transformado (ambos con el tamaño $m \times n$) y $P$ es la transformación lineal ($m \times m$), dada por
+$$
+PX = Y,
+$$
+$P$ puede ser vista como la matriz que transforma $X$ en $Y$, o como la transformación geométrica (rotación + estiramiento) que transforma $X$ en $Y$. 
+
+* Las filas de $P$ son el conjunto de vectores que definen la nueva base para expresar las columnas de $ X $. Estos vectores de fila, si están debidamente definidos, son los componentes _principales_ de $X$. 
+
+Para nuestros conjuntos de datos, una fila de $X$ es el conjunto de mediciones de un tipo particular, mientras que una columna de $X$ es el conjunto de mediciones de una sola observación.
+
+Entre todas las posibles bases nuevas, la PCA elige una que reduzca la redundancia de los datos, es decir, aquella en la que la covarianza entre variables sea lo menos posible. Esto significa una matriz de covarianza lo más cercana posible a una matriz diagonal (todos los valores fuera de diagonal lo más cerca posible de cero).
+
+Para PCA, el vector de base con la mayor varianza es el más principal (el que explica más variación del conjunto de datos). Este vector base será la primera fila de $P$. Las filas ordenadas resultantes de $P$ son los componentes principales.
+
+**Supuestos:**
+
+* Linealidad: la nueva base es una combinación lineal de la base original
+
+* La media y la varianza son estadísticas suficientes: PCA supone que estas estadísticas describen totalmente la distribución de los datos a lo largo del eje (es decir, la distribución normal).
+
+* Las grandes variaciones tienen una dinámica importante: alta varianza significa señal, baja varianza significa ruido. Esto significa que el PCA implica que la dinámica tiene una SNR alta (relación señal / ruido).
+
+* Los componentes son ortonormales
+
+Suponemos que la matriz de covarianza de $X$ está dada por $\frac{1} {n-1}XX^T$.
+
+### A-1) Calculo autonomo
+
+```{r}
+library(stats)
+# data
+x <- c(2.5,.5,2.2,1.9,3.1,2.3,2,1,1.5,1.1)
+y <- c(2.4,0.7,2.9,2.2,3.0,2.7,1.6,1.1,1.6,.9)
+plot(x,y, xlim=c(-1,4), ylim=c(-1,4))
+abline(h=0,v=0,lty=3)
+```
+
+Estandarizando por la media:
+
+```{r}
+x1 <- x - mean(x)
+y1 <- y - mean(y)
+plot(x1,y1)
+abline(h=0,v=0,lty=3)
+```
+
+Calculando la matriz de covarianzas:
+
+```{r}
+m <- matrix(c(x1,y1),ncol=2)
+# covariance matrix
+cov.m <- cov(m)
+cov.m
+```
+
+Calculamos `eigenvectores` y `eigenvalores` de la matriz de covarianzas:
+
+```{r}
+cov.eig <- eigen(cov.m)
+cov.eig
+# verificando ortogonalidad
+cov.eig$vectors[,1] %*% cov.eig$vectors[,2]
+# visualizacion
+plot(x1,y1); abline(h=0,v=0,lty=3)
+abline(a=0,b=(cov.eig$vectors[1,1]/cov.eig$vectors[2,1]),col="red")
+abline(a=0,b=(cov.eig$vectors[1,2]/cov.eig$vectors[2,2]),col="green")
+```
+
+* El primer `eigenvector` (línea roja) parece un ajuste lineal, que nos muestra cómo se relaciona con los datos, pero el otro vector propio no parece estar relacionado con los datos
+
+* Si nos fijamos en los `eigenvectores`, el primero es mucho mayor que el segundo: el `eigenvalor` más alto identifica la componente principal del conjunto de datos.
+
+Una vez encontrados los autovectores, debemos ordenarlos cada vez más por sus valores propios. Esto nos da los componentes por orden de importancia! Podemos decidir ignorar los componentes con menos significado: perderemos información pero no tanto si sus valores son pequeños.
+
+Por lo tanto, comenzamos con un conjunto de datos de $n$ dimensions, seleccionamos $p$ components y obtenemos un nuevo conjunto de datos con $p$ dimensions que representan el dataset original. El vector de características es la matriz de los vectores propios que elegimos mantener.
+
+Este proceso de eliminación de los ejes menos importantes puede ayudar a revelar la dinámica oculta y simplificada en datos de alta dimensión. Este proceso se llama _dimensional reduction_.
+
+En nuestro 2D por ejemplo, sólo tenemos dos opciones, (1) mantener la primera o (2) mantener tanto que es:
+
+```{r}
+# un componente
+f.vector1 <- as.matrix(cov.eig$vectors[,1],ncol=1)
+f.vector1
+# dos componentes
+f.vector2 <- as.matrix(cov.eig$vectors[,c(1,2)],ncol=2)
+f.vector2
+```
+
+Derivamos el nuevo conjunto de datos transformados.
+
+Si $M$ es el conjunto de `datos` original y $F$ es el vector de atributos, entonces la transpuesta de los datos transformados es
+$$
+F' \times M'.
+$$
+
+```{r}
+# vector 1
+final1 <- t(f.vector1) %*% t(m)
+final1
+# vector 2
+final2 <- t(f.vector2) %*% t(m)
+final2
+# nueva matriz de covarianza
+cov(t(final2))
+```
+
+Estos conjuntos de datos finales son los datos originales en términos de los vectores que elegimos, es decir, ya no están sobre x, eje y, sino que utilizan los vectores propios elegidos como su nuevo eje.
+
+```{r}
+# final1 unidimensional
+t(final1) 
+# final2 bidimensional
+plot(final2[1,],final2[2,],ylim=c(-2,2));abline(h=0,v=0,lty=3)
+```
+
+Recuperando los datos originales:
+
+a. Recuperando los datos originales completos.
+
+```{r}
+# con todos los eigenvectores - recuperacion al 100% (como en final2)
+original.dataset2 <- t(f.vector2 %*% final2)
+original.dataset2[,1] <- original.dataset2[,1] + mean(x)
+original.dataset2[,2] <- original.dataset2[,2] + mean(y)
+original.dataset2
+plot(original.dataset2[,1],original.dataset2[,2],xlim=c(-1,4),ylim=c(-1,4))
+abline(h=0,v=0,lty=3)
+```
+
+b. Recuperando los datos originales parciales.
+
+```{r}
+# con solo algunos de los eigenvalores (como en final1)
+original.dataset1 <- t(f.vector1 %*% final1)
+original.dataset1[,1] <- original.dataset1[,1] + mean(x)
+original.dataset1[,2] <- original.dataset1[,2] + mean(y)
+original.dataset1
+plot(original.dataset1[,1],original.dataset1[,2],xlim=c(-1,4),ylim=c(-1,4))
+abline(h=0,v=0,lty=3)
+```
+
+### A-2) Descomposicion singular
+
+Para una matriz $M$ tal que
+$$
+M = U\times D \times V',
+$$
+los componentes prncipales de $M$ estan dados por las columnas de los `eigenvectores` a la derecha, i.e. $V$. Veamos este `script`.
+
+```{r}
+svd.m <- svd(scale(m))
+svd.m$v
+pca.m <- prcomp(m,scale=TRUE)
+pca.m$rotation
+```
+
+### A-3) Empleando `prcomp()`
+
+La libreria `stats` incluye la funcion `prcomp()` para realizar PCA:
+
+```{r}
+library(stats)
+
+df = data.frame(x=x, y=y)
+df
+# prcomp() does the mean centering (option center=TRUE)
+# also it scales the variables so that all have unit variance (scale=TRUE). This is necessary if the data has different units (it uses correlation matrix). In this case, the units are the same, and we like to have the same results as above (it uses covariance matrix):
+pca.eg <- prcomp(df, scale=FALSE) 
+pca.eg
+plot(x1,y1); abline(h=0,v=0,lty=3)
+abline(a=0,b=(pca.eg$rotation[1,1]/pca.eg$rotation[2,1]),col="red")
+abline(a=0,b=(pca.eg$rotation[1,2]/pca.eg$rotation[2,2]),col="green")
+summary(pca.eg)
+```
+
+Una visualizacion via `biplot`:
+
+```{r, fig.width = 12}
+par(mfrow=c(1,2))
+plot(pca.eg)
+biplot(pca.eg)
+# samples are displayed as points, variables are displayed  as vectors
+par(mfrow=c(1,1))
+# argument 'tol' receives a value indicating the magnitude below which components should be omitted. (Components are omitted if their standard deviations are less than or equal to tol times the standard deviation of the first component.)
+prcomp(df, scale=TRUE, tol=.2) 
+```
+
+### A-4) Ejemplo procesando imagenes
+
+```
+require("EBImage")
+require("ripa")
+library("stats")
+setwd("/home/jcmo/JCMO.Trabajo/@Mis.Cursos/2017-A_Aprendizaje Estadistico/sesiones/")
+pic <- Image(flip(readImage("Figures/pca_image.jpg")))
+red.weigth   <- .2989; green.weigth <- .587; blue.weigth  <- 0.114
+m <- red.weigth * imageData(pic)[,,1] + green.weigth * imageData(pic)[,,2] + blue.weigth  * imageData(pic)[,,3]
+image(m, col = grey(seq(0, 1, length = 256)))
+
+pca.m <- prcomp(m, scale=TRUE)
+
+plot(summary(pca.m)$importance[3,], type="l", ylab="%variance explained", xlab="nth component (decreasing order)")
+abline(h=0.99,col="red")
+
+abline(v=165,col="red",lty=3)
+chosen.components <- 1:165
+feature.vector <- pca.m$rotation[,chosen.components]
+feature.vector[1:10,1:5]
+
+compact.data <- t(feature.vector) %*% t(m)
+dim(compact.data) # we cut lots of columns
+approx.m <- t(feature.vector %*% compact.data)
+
+dim(approx.m)
+image(approx.m, col = grey(seq(0, 1, length = 256)))
+```
+
+### A-5) Kernel PCA
+
+El PCA se obtiene a partir de los vectores propios de la matriz de covarianza, y dan direcciones en las que los datos tienen una varianza máxima. 
+
+*Kernel* PCA extiende PCA, imitando lo que obtendríamos si expandiéramos las características mediante transformaciones no lineales, y luego aplicamos PCA en este espacio de características transformado.
+
+
+```{r}
+require("kernlab")
+
+data(iris)
+test <- sample(1:150,20)
+
+kpc <- kpca(~., data=iris[-test,-5],
+            kernel = "rbfdot",
+            kpar   = list(sigma=0.2),
+            features=2)
+
+head( pcv(kpc) )
+
+plot(rotated(kpc), col=as.integer(iris[-test,5]),
+xlab="1st Principal Component",ylab="2nd Principal Component")
+
+emb <- predict(kpc,iris[test,-5])
+points(emb, col=as.integer(iris[test,5]))
+```
+
+## B. Analisis de factores
+
+
+## Referencias
+
+* **Alpaydin** -- Capitulo 6 
+
+* **Barber** -- Capitulo 15 
+
+* **Hastie et al** -- Seccion 14.5
+
+

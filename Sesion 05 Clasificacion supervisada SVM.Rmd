@@ -1,0 +1,216 @@
+---
+title: "S05 - Clasificacion supervisada"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+require("ggplot2")
+require("dplyr")
+
+```
+
+# Clasificacion supervisada
+
+
+## Maquina de soporte vectorial
+
+### Teoria
+
+Consideremos una clasificacion binaria con estimulos $X_i$ (*input space*) y atributos (a.k.a., *targets*, *clases*) $y_i = \in\{-1,1\}$.
+
+```{r svm_simu}
+x1s <- c(.5,1,1,2,3,3.5,     1,3.5,4,5,5.5,6)
+x2s <- c(3.5,1,2.5,2,1,1.2,  5.8,3,4,5,4,1)
+ys <- c(rep(+1,6),          rep(-1,6))
+my.data <- data.frame(x1=x1s, x2=x2s, type=as.factor(ys))
+my.data
+plot(my.data[,-3],col=(ys+3)/2, pch=19); abline(h=0,v=0,lty=3)
+```
+
+Los modelos de Maquina de Soporte Vectorial (*Support Vector Machine* o SVM), se definen domo un modelo de regresion en el que el error es minimizado mediante la maximizacionde la *marginal* $\gamma$, ie., se obtienen mediante la distancia minima entre el hiperplano separando ambas clases y el punto minimo de cada clase mas cercanas (called *support vectors*).
+
+<center><img src="Figures/svm-eg1.png" height="33%" width="33%""></center>
+
+El hiperplano de separacion puede expresarse como
+$$<\omega,x> + b = 0$$
+donde $b$ es el parametro de sesgos y $\omega$ es el vector de pesos. Piensen en $<\omega,x>$ como el proyector lineal que vimos en las sesiones anteriores, $proj(\omega,x)$.
+
+El parametro $\omega$ define la direccion de calculo al punto $x$ (en terminos del proyector $proj$ que elijamos) y, en el caso del proyector lineal, $\frac{b}{\|\omega\|}$ corresponde a la distancia perpendicular del hiperplano al origen. Vean el siguiente diagrama.
+
+<center><img src="Figures/svm-eg2.png"></center>
+
+Definir la asignacion del `atributo` para el conjunto de estimulos $x_i$ correspondientes al $i$-esimo individuo se define como
+$$D(x_i) = signal(proj(\omega,x_i) + b)$$
+donde $D(\cdot)$ es una transformacion invariante bajo escalamiento positivo, i.e. 
+\begin{cases}
+\omega & \rightarrow \lambda \omega
+\nonumber \\
+b & \rightarrow \lambda b,
+\nonumber
+\end{cases}
+para un valor dijo de $\lambda > 0$ tal que *margin* tenga la distancia igual a $1$, de forma que 
+$$proj(\omega,x) + b = 1$$
+o
+$$proj(\omega,x) + b = -1,$$
+para el vector de soportes (*support vectors*) de uno o de otro `atributos`. Esto define lo que se conoce como `hiperplano canonico` (o *canonical hyperplane*).
+
+Si, por ejemplo, $x_1, x_2$ son dos `vectores soportes` (*support vectors*) de cada atributo, entonces definiendo la diferencia de los dos estimulos,
+$$proj\left(\omega,(x_1 - x_2)\right) = 2.$$
+Vean el diagrama.
+
+<center><img src="Figures/svm-eg3.png"></center>
+
+Ahora, si el vector $(x_1 - x_2)$ es proyectado (vector marcado en *rojo* en la figura anterior) sobre el hiperplano de separacion, i.e. con distancia $\frac{w}{|w|}$, obtenemos el doble de la distancia marginal,
+$$proj \left( (x_1 - x_2),\frac{\omega}{\|\omega\|}\right) = \frac{proj\left(\omega,(x_1 - x_2)\right)}{\|\omega\|} = \frac{2}{\|\omega\|}.$$
+
+De esta forma, la constante de normamilizacion es definida como $\gamma = \frac{1}{\|\omega\|}$. Asi, necesitamos maximizar $\frac{1}{\|\omega\|}$, minimizando $\|\omega\|$. Esto es equivalente a minimizar $\frac{1}{2}\|\omega\|^2$.
+
+Esta minimizacion se raliza con restricciones, pues $\omega$ debe ser tal que las siguiente restriccion,
+$$y_i (proj(\omega,x_i) + b) \geq 1,$$
+se cumpla para todo $y_i$ y $x_i$. Esta restriccion esta definida en la clase de clasificacion de los datos originales.
+
+La ecuacion alcanza el valor de $1$ para el `vector de soportes`. Para cualquier vecotor de estimulos $x$ se obtendra un valor mayor a $1$.
+
+_NOTA: La optimizacion anterior se obtiene via multiplicadores de  Langrage (revisen las referencias a este tema...)_
+
+En el caso del proyector lineal, el procedimiento de optimizacion dara origen a los datos $\alpha_i$ tales que
+$$\omega = \sum_i \alpha_i y_i x_i$$
+$$\sum_i \alpha_i y_i = 0$$
+
+donde si $x_i$ es un `support vector` entonces $\alpha_i>0$ siendo igual a $0$ en otro caso).
+
+Definimos $S$ como el conjunto de indices de vectores de soporte, 
+$$b = \frac{1}{|S|} \sum_{s \in S} \Big( y_s - x_s . \sum_{m \in S} \alpha_m y_m x_m \Big)$$
+siendo $b$ y $\omega$ los parametros que definen el hiperplano que define el modelo SVM.
+
+### Implementacion
+
+La implementacion de los modelos SVM la tomaremos de los paquetes `e1071` y `rpart` de R.
+
+```
+# Implementacion
+install.packages("e1071")
+install.packages("rpart")
+# Datos
+install.packages("mlbench")
+```
+
+Ejemplificamos el procedmiento con los datos precargados en `mlbench`. Veamos el ejemplo. 
+
+#### A) Aprendizaje
+
+```{r svm_learning}
+#rm(list=ls())
+require("e1071")
+
+svm.model <- svm(type ~ ., 
+                 data=my.data, 
+                 type='C-classification',
+                 kernel='linear',scale=FALSE)
+
+plot(my.data[,-3], 
+     col=(ys+3)/2, 
+     pch=19, 
+     xlim=c(-1,6), ylim=c(-1,6))
+abline(h=0,v=0,lty=3)
+# Mostramos los vectores de soporte
+points(my.data[svm.model$index,c(1,2)],col="blue",cex=2)
+
+# Parametros del hiperplano
+w <- t(svm.model$coefs) %*% svm.model$SV
+b <- -svm.model$rho
+
+# Caso 2D: el hiperplano es la linea w[1,1]*x1 + w[1,2]*x2 + b = 0
+abline(a=-b/w[1,2], b=-w[1,1]/w[1,2], col="blue", lty=3)
+```
+
+#### B) Prediccion
+
+```{r svm_prediction}
+observations <- data.frame(x1=c(1,3.5),x2=c(4,3.5))
+
+plot(my.data[,-3],
+     col=(ys+3)/2, 
+     pch=19, 
+     xlim=c(-1,6), ylim=c(-1,6))
+abline(h=0,v=0,lty=3)
+points(observations[1,], col="green", pch=19)
+points(observations[2,], col="blue", pch=19)
+abline(a=-b/w[1,2], b=-w[1,1]/w[1,2], col="blue", lty=3)
+predict(svm.model, observations) 
+```
+
+Un ejemplo adicional con `iris dataset`. Este es un conjunto de datos de plantas, donde el numero de `atributos` en $Y$ es igual a $3$, con
+\begin{equation}
+Y = 
+\begin{cases}
+1 $ \text{setosa} \\
+2 $ \text{versicolor} \\
+3 $ \text{virginica}. \\
+\end{cases}
+\edn{equation}
+ 
+Las posibles variables de `estimulos` (o `covariables` o `support vectors`) son 
+* `Sepal.Length`
+
+* `Sepal.Width`
+
+* `Petal.Length`
+
+* `Petal.Width`
+
+_Observen que en este caso, alguas coordenadas de los `estimulos` son separados._
+
+```{r iris_data}
+data(iris)
+head(iris)
+summary(iris)
+table(iris$Species)
+plot(iris$Species)
+plot(iris[, c("Sepal.Length","Sepal.Width","Petal.Length" , "Petal.Width")])
+```
+
+#### A) Aprendizaje
+
+Las variables `Lenght`  y `Width` son en este caso los `estimulos` o `vectores de soporte` (*support vectors*).
+
+```{r iris_leargning}
+svm.model <- svm(Species ~ Sepal.Length + Sepal.Width, 
+                 data = iris, 
+                 kernel = "linear")
+
+plot(iris$Sepal.Length, 
+     iris$Sepal.Width, col = as.integer(iris[, 5]), 
+     pch = c("o","+")[1:150 %in% svm.model$index + 1], cex = 2, 
+     xlab = "Sepal length", ylab = "Sepal width")
+
+plot(svm.model, iris, 
+     Sepal.Width ~ Sepal.Length, 
+     slice = list(sepal.width = 1, sepal.length = 2),
+     main="")
+```
+
+#### B) Prediccion
+
+```{r iris_prediction}
+# Prediccion
+svm.pred  <- predict(svm.model, iris[,-5]) 
+# Iris - Matriz de confusion
+table(pred = svm.pred, true = iris[,5])
+```
+
+### Referencias
+
+* **Hastie** - Secciones 12.1-12.2
+
+* **James et al** - Secciones 9.1-9.3
+
+* **Alpaydin** - Secciones 10.8-10.9
+
+* **Clark et al** - Seccion 5.4
+
+* Cortes, C. & Vapnik, V. (1995). Support-vector network. Machine Learning, 20, 1–25.

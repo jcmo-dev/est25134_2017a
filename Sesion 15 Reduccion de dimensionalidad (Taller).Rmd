@@ -1,0 +1,132 @@
+---
+title: "est25134_taller"
+author: "JCMO"
+date: "21 de abril de 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Algoritmo 0
+
+```{r}
+
+rm(list=ls())
+
+set.seed(123)
+
+require("mvtnorm")
+require("MCMCpack")
+
+# datos
+n <- 50
+x <- rmvnorm(n, mean=matrix(c(1,2),ncol=2), sigma=matrix(c(1,0.3,0.3,1),ncol=2,nrow=2))
+
+# inputs
+M <- 1000
+
+# conjugada para mu, sigma, ie. Normal/Wishat-inversa
+m0 <- matrix(c(0,0),ncol=2)
+S0 <- matrix(c(1,0,0,1),ncol=2,nrow=2)
+a0 <- 1/2
+b0 <- 1/2
+
+# algortimo 0
+mu.sim <- matrix(NA, ncol=2, nrow=M)
+sigma.sim <- list()
+
+# Actualizacion
+a1 <- a0 + n
+S1 <- S0 + (n/2) * ( (1/n)*t(x-matrix(rep(colMeans(x),each=50),ncol=2,nrow=n))%*%(x-matrix(rep(colMeans(x),each=50),ncol=2,nrow=n)) + (a0/a1) * t(colMeans(x) - m0)%*%(colMeans(x) - m0) ) 
+b1 <- b0 + n/2
+m1 <- (1/a1) * (n*colMeans(x) + a0*m0)
+
+# Simulaciones  
+i <- 1
+for(i in 1:M){
+  sigma.sim[[i]] <- rwish(a1,solve(S1))
+  mu.sim[i, ] <- rmvnorm(1,mean=m1,sigma=b1*S1)
+}
+
+head(mu.sim)
+head(sigma.sim)
+
+``` 
+
+
+```{r}
+# Algoritmo 2
+
+J <- 3
+
+x.sim <- array(NA,dim=c(M,2,J))
+
+# Simulaciones  
+i <- 1
+for(i in 1:M){
+  sigma.sim[[i]] <- rwish(a1,solve(S1))
+  mu.sim[i, ] <- rmvnorm(1,mean=m1,sigma=b1*solve(S1))
+  j <- 1
+  for(j in 1:J){
+    x.sim[i,,j] <- rmvnorm(1,mean=mu.sim[i,],sigma=sigma.sim[[i]])
+  }
+}
+
+
+plot(x.sim[,,1])
+
+plot(x.sim[,2,])
+
+hist(x.sim[,2,])
+
+```
+
+
+```{r}
+# Algoritmo 1
+
+J <- 3
+
+x.dat <- x[1:J, ]
+
+pred.norm <- function(J,mu.sim,sigma.sim,x.dat){
+  M <- nrow(mu.sim)
+  densidad.sim <- array(NA,dim=c(M))
+  densidad <- 1
+  m <- 1
+  for(m in 1:M){
+    j <- 1 
+    for(j in 1:J){
+    densidad <- densidad * dmvnorm(x.dat[j,],mean=mu.sim[m,],sigma = sigma.sim[[m]])
+    }
+    densidad.sim[m] <- densidad
+    densidad <- 1
+  }
+  densidad.mc <- mean(densidad.sim)
+  return(densidad.mc)
+}
+
+x.dat
+
+pred.norm(J,mu.sim,sigma.sim,x.dat)
+
+x.grid.base <- seq(-5,5,1)
+
+x.grid <- as.matrix(expand.grid(x.grid.base, 
+                                x.grid.base,
+                                x.grid.base,
+                                x.grid.base))
+
+K <- nrow(x.grid)
+densidad <- array(NA,dim=c(K))
+
+k<- 1
+J <-2 
+for(k in 1:K){
+  densidad[k] <- pred.norm(J,mu.sim,sigma.sim,x.dat = matrix(x.grid[k,],nrow=2,ncol=2))
+}
+
+```
+

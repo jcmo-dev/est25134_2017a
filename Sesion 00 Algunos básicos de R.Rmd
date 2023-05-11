@@ -1,0 +1,189 @@
+---
+title: "S00 - Algunos básicos de R"
+author: "Juan Carlos Martinez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preámbulo
+
+En este curso usaremos [RStudio](https://www.r-project.org/) para implementar los modelos que estudiaremos.  Les recomiendo que usen [RStudio](https://www.rstudio.com/) como editor para sus rutinas (siéntanse en libertad de emplear [Jupyter](http://jupyter.org/) o [Atom](https://atom.io/) si lo encuentran más conveniente).
+
+En estas notas revisaremos algunas de las funcionalidades más general de R. Empezaremos con la instalación de paquetes o librerias uqe utlizaremos a lo largo del curso. Desde RStudio stas librerias pueden instalarse empleando las siguientes instrucciones:
+
+```
+options("repos"="http://cran.itam.mx")
+
+upackages = c("repmis", "tidyr", "lubridate", "dplyr", "ggplot2")
+
+install.packages(upackages)
+```
+
+Breve descripción de los paquetes:
+*  `repmis` - Importación de datos
+*  `tidyr` - Manipulación de datos
+*  `lubridate` - Manejo de datos temporales
+*  `dplyr` - Manipulación y agregación de datos
+*  `ggplot2` - Visualización de datos
+
+```{r load_packages, echo=TRUE}
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+## Importación de datos
+
+Cargamos los datos desde un repositorio en GitHUb (en este caso, el repositorio de datos de nuestro curso). Para esto, empleamos en RStudio el paquete `repmis`. Por ejemplo, para leer los datos de reclamos de seguros de viviendas en Dinamarca, empleamos:
+
+
+```
+library(repmis)
+
+source_data("https://github.com/jcmartinezovando/est25134_2017a/blob/master/datos/EST25134_DanishInsuranceMultivariate_Data.RData?raw=true")
+```
+
+Noten que debemos especificar el path de los datos desde el repositorio en GitHub; este lo pueden encontrar seleccionando la opción `Copy path` que se despliega al seleccionar cada archivo da datos. Empleando `repmis` es necesario que el path de datos sea `blob` Noten también la última instrucción para especificar que los datos son libres de formato. 
+También podemos cargar los datos en R empleando las siguientes opciones.
+
+```{r no.repmis, echo=TRUE}
+rm(list=ls())
+githubURL <- "https://github.com/jcmartinezovando/est25134_2017a/raw/master/datos/EST25134_DanishInsuranceMultivariate_Data.RData"
+
+# En Windows
+load(url(githubURL))
+
+# Si existe problema, podemos probar con esto en Linux o iOS
+download.file(githubURL,"EST25134_DanishInsuranceMultivariate_Data")
+load("DanishInsuranceMultivariate_Data")
+ls()
+```
+Noten que en este caso, el path de datos debe ser del tipo `raw`. Es la instrucción análoga a la última que empleamos en `repmis`.
+
+La última opción es quizás la más conveniente, pues es autónoma de otras librerías a las preestablecidas en R. Sin embargo, en ciertos contextos `repmis` puede ser una muy buena opción.
+
+## Operaciones básicas
+
+### Operaciones con vectores
+
+Los vectores en R se definen, en principio, como secuencias de datos. Las entradas de los vectores se acceden empleando `[]`
+
+```{r}
+a <- c(5, 2, 4.1, 7, 9.2)
+a
+a[2:4]
+```
+
+Como en otros lenguajes de programación, las operaciones con vectores se realizan entrada por entrada. En particular, debemos cuidar que el pŕoducto de vectores, como se muestra a continuación, los componentes sean compatibles en longitud.
+
+```{r}
+b <- a + 10
+b
+c <- sqrt(a)
+c
+a + c
+10*a
+length(a)
+length(c)
+a*c
+```
+
+Se pueden definir arreglos vectoriales de objetos particulares, como textos:
+```{r}
+vector_texto <- c('manzana','manzana','pera','plátano','fresa')
+vector_texto
+```
+Solo que en este caso, varias operaciones (particularmente aritméticas) no son aplicables.
+
+## *Data-frames*
+
+Los `data.frame`s son arreglos de vectores en R cuyos vectores entrada (columna) pueden tener atributos particulares. A lo largo del curso estaremos trabajando con `data.frame`s todo el tiempo. 
+
+Para definir *data-frames* podemos usar instrucciones de `R-base` o del paquete `dplyr`. A continuación un ejemplo:
+
+```{r}
+# R-base
+tabla1 <- data.frame(n = 1:5, valor = a, fruta = vector_texto) 
+tabla1
+# dplyr
+tabla2 <- data_frame(n = 1:5, valor = a, fruta = vector_texto) 
+tabla2
+```
+
+Consultas a entradas renglón o columna de los data frames pueden relaizar análogamente en `R-base` o `dplyr`. Sin embargo, en el segundo se cuanta con más atributos de utilidad que explotaremos más adelante.
+
+```{r}
+# R-base
+tabla1$valor
+tabla1$valor[3]
+# dplyr
+tabla2$valor
+tabla2$valor[3]
+```
+
+```{r}
+# R-base
+tabla1[2,]
+# dplyr
+tabla2[2,]
+```
+
+## Funciones
+
+Las funciones en `R` son reglas de asociación de objetos. Dos ejemplos.
+
+- Función convencional
+
+```{r}
+ejemplo_fun <- function(x){
+  y <- x + 1
+  y^2 # este último valor es el que regresa la función
+}
+
+ejemplo_fun(2)
+(2+1)^2
+```
+
+- Función con funciones anónimas como argumento
+
+```{r}
+procentaje_agr <- function(x, mult = 100, FUN = round, ...){
+ porcentaje <- FUN(x * mult, ...)
+ paste(porcentaje, "%", sep = "")
+}
+utilidades <- c(2100, 1430, 3580, 5230)
+utilidades_relativas <- function(x) round(x / sum(x) * 100)
+procentaje_agr(utilidades,
+        FUN = function(x) round(x / sum(x) * 100) )
+
+```
+
+## *Pipes*
+
+En `dply` existen varias funciones que son útiles para la manipulación de `data-frame`s. Entre ellas:
+
+1. `select` - extraer columnas
+2. `filter` - extraer renglones
+3. `mutate` - crear variables
+4. `group_by` - agrupar por columnas
+5. `summarise` - resumen de contenido y características.
+
+En particular, cuanta con la función `%>%` (`pipe`), que definen secuencias de funciones aplicadas a uno o varios objetos. Por ejemplo:
+
+```{r}
+9 %>% sqrt
+```
+
+Esta función se define como la secuencia de crear el objeto `9` y posteriormente aplicarle la función `sqrt`. Esto es equivalente a la siguiente instrucción en `R-base`:
+
+```{r}
+sqrt(9)
+```
+
+En la siguiente entrada del blog de Sean C. Anderson  [dplyr and pipes: the basics](http://seananderson.ca/2014/09/13/dplyr-intro.html) pueden encontrar una buena introducción al tema. Desde luego, en la documentación de  [dplyr](https://cran.r-project.org/web/packages/dplyr/index.html) encontrarán la mejor y más completa documentación.
+

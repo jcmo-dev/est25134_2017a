@@ -1,0 +1,391 @@
+---
+title: "S02 - Estimación de curvas (*regresion multidimensional*)"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+library(ggplot2)
+library(dplyr)
+
+```
+
+# Metodos de simulacion
+
+Varios modelos estadisticos en *machine learning* incorporan parametros que no son faciles de estimar en primera instancia. En particular, parametros que se relacionan con los datos de manera no lineal, o parametros que se relacionan con otros parametros (latentes u *ocultos*, que a su vez se relacionan con datos observables). Este es el caso de los modelos de **redes bases radiales** (*radial basis network*) que vimos en la clase pasada.
+
+El aprenzaje frecuentista o bayesiano sobre esta clase de modelos descansa en metodos numericos de simulacion. En particular, dos metodos resultan ser relevantes y ampliamente usados en la practica:
+
+1. Algoritmo EM (*Expectation-Maximization*) (Dempster, )
+
+2. *Gibss sampler* (Gelfand y Smith, 1993)
+
+En esta sesion revisaremos los fundamentos de estos modelos, pues estaremos empleandolos en diferentes instancias a lo largo del curso.
+
+## 0. Principio de verosimilitud
+
+Consideremos un ejemplo sencillo, con variables aleatorias con distribucion gaussiana y parametros $(\mu,\sigma^2)$, i.e.
+
+$$
+X_i \stackrel{iid}{\sim} N(x|\mu, \sigma^2), i={1, 2, ..., n} \\
+f(x_i|\mu,\sigma^2) = (2\pi \sigma^2)^{1/2} 
+\exp \left\{-\frac{1}{2\sigma^2}(x_i-\mu)^2\right\}.
+$$
+
+Generemos un conjunto de datos a partir de esta distribucion con una media $\mu=10$ predefinida, y varianza igual a 1.
+
+```{r em_setup, echo=TRUE}
+set.seed(1)
+
+mean.true <- 10
+
+n.sim <- 20
+
+dat <- rnorm(n.sim, mean = mean.true, sd = 1)
+summary(dat)
+```
+
+En este caso, a partir de los datos que tengamos `dat`, que en nuestro contexto corresponde a los datos de entrenamiento, deseamos discernir entre diferentes posibilidades de $\mu$ como valor. 
+
+Con base en esto, empleando maxima verosimilitud consiste en proponer un conjunto de posibles valores para $\mu$ y contrastar que tanto empatan con los datos `dat` con base en la verosimilitud del modelo, i.e.
+
+```{r em_ml}
+mean.grid <- seq(0, 20, by=0.1)
+
+gauss.lik <- rep(0, length(mean.grid))
+
+for( i in seq_along( gauss.lik ) ) {
+  gauss.lik[i] <- prod( dnorm( dat, mean = mean.grid[i], sd=1 ) )
+  }
+
+plot( gauss.lik ~ mean.grid, type="b" )
+```
+
+Considerando poca informacion, tenemos ambiguedad respecto a $mu$, i.e. considerando solo tres datos `dat=(9,10,11)`, observamos
+
+```{r em_ml2}
+dat <- c(1,10,19)
+
+mean.grid <- seq(0, 20, by=0.1)
+
+gauss.lik <- rep(0, length(mean.grid))
+
+for( i in seq_along( gauss.lik ) ) {
+  gauss.lik[i] <- prod( dnorm( dat, mean = mean.grid[i], sd=1 ) )
+  }
+
+plot( gauss.lik ~ mean.grid, type="b" )
+```
+
+*En estos casos, es facil encontrar expresiones analiticas cerradas para determninar los valores mas viables (verosimiles) para* $\mu$. 
+
+## 1. Algoritmo EM
+
+El algorimo EM, pormuesto por Dempster (1980), es una alternativa para encontrar estimadores de maxima verosimilitud para **parametros** y **variables latentes** (parametros que conectar datos observables con otros parametros). 
+
+Las variables latentes se obtiene como parametros intermedios en la representacion de las *redes de bases radiales* (que son los centroides y/o preciones de las bases radiales), por ejemplo. Surgen comunmente en modelos de mezclas, como
+\begin{eqnarray}
+f(x_i|\theta) & = & \int k(x_i|\gamma_i)g(\gamma_i|\theta),
+\nonumber \\
+\text{ o }&&
+\nonumber \\
+f(x_i|\theta) & = & \sum_{j=1}^{J} \omega_i k(x_i|\theta_i),
+\end{eqnarray}
+
+con 
+$$
+\omega_j \geq 0, \text{ para } j=1,\dots,J\\
+\sum_{j=1}^{J}\omega_j = 1.
+$$
+
+* En el primer caso, el parametro es $\theta$, y las variables latentes son $(\gamma_i)$. 
+
+* En el segundo caso, los parametros son $(\mu_i)$ (parmaetros de las distribuciones normales) y las variables latentes son $(\omega_i)$ (probabilidades de pertenencia a cada componente de la mezcla).
+
+### Ejemplo con mezclas
+
+Consideremos el segundo ejemplo para ilustrar el algoritmo EM. Simulemos un conjunto de datos de una mezcla de dos distribuciones gaussianas con dos medias distintas, $\mu_1$ y $\mu_2$.
+
+```{r rm_mixture}
+set.seed(1)
+
+omega <- 0.25
+
+mu1 <- 1
+mu2 <- 7
+
+n.sim <- 1000
+
+x <- y <- rep(NaN,n.sim)
+
+for( i in 1:n.sim ){
+  if( runif(1) < omega ){
+    x[i] <- rnorm(1, mean=mu1, sd=1)
+    y[i] <- "uno"
+  } else {
+    x[i] <- rnorm(1, mean=mu2, sd=1)
+    y[i] <- "dos"
+  }
+}
+
+y<-as.factor(y)
+
+library(sm)
+# Sabiendo de que distribucion provienen los datos
+sm.density.compare(x, y, xlab="dat", ylab="densidad")
+title(main="Kernel density (con conocimiento)")
+
+# Sin conocimiento de que distribucion provienen los datos
+hist(x, xlab="dat", ylab="frecuencia",main="")
+
+mix.den <- density(x)
+plot(mix.den, xlab="dat", ylab="densidad", main="Kernel density (sin conocimiento)")
+polygon(mix.den, col="red", border="blue") 
+```
+
+En este caso, el **algoritmo EM** estima simultaneamente $0<\omega<1$ y $(\mu_1,\mu_2)$, a traves de la implementacion recursiva de los dos siguientes pasos:
+
+1. Dados los *parametros* y `datos`, estima las *variables latentes*.
+
+2. Dados los `datos` y las variables latentes, estima los *parametros*.
+
+Para esto, se requiere fijar valores iniciales de los parametros y variables latentes, i.e. $(\mu_1^{(0)},\mu_2^{(0)})$ y $\omega^{(0)}$.
+
+```{r em_mix_r}
+# Valores iniciales de los parametros
+mu1 <- 0
+mu2 <- 1
+tau <- 1
+
+# Numero de repeticiones de los pasos EM
+N.rep <- 100
+
+# Recursion
+for( i in 1:N.rep ) {
+  # Dados los parametros y datos
+  T_1 <- tau * dnorm( x, mu1 )
+  T_2 <- tau * dnorm( x, mu2 )
+
+  omega1 <- T_1 / (T_1 + T_2)
+  omega2 <- T_2 / (T_1 + T_2)
+  
+  omega <- mean(omega1)
+
+  # Dados los datos observados y variables latentes
+
+  mu1 <- sum( omega1 * x ) / sum(omega1)
+  mu2 <- sum( omega2 * x ) / sum(omega2)
+
+  ## print the current estimates
+
+  print( c(mu1, mu2, omega) )
+
+}
+```
+
+La implementacion de este algorigmo esta incluida en el paquete `mixtools`
+
+```
+install.packages("mixtools")
+```
+La funcion `normalmixEM` realiza la implementacion de este algoritmo incluyendo incertidumbre sobre los parametros de escala 
+
+```{r em_mixtools, echo=FALSE}
+library("mixtools")
+mu0 <- c(0,1)
+sigma0 <- c(1,1)
+sd0 <- c(1,1)
+dat.emmix <- normalmixEM( x, mu = mu0, sigma = sigma0, sd.constr = sd0 )
+summary(dat.emmix)
+```
+
+Dentro de `mixtools`, el parametro `lambda` es lo que nosotros referimos a $\omega$.
+
+La razon por la cual el algorimo EM se emplea en el contexto de variables latentes es porque la verosimilitud para *parametros* y *variables latentes* resulta dificil de optimizar analiticamente.
+
+## 2. Gibbs sampler
+
+El Gibbs sampler (Gelfand y Smith, 1993) fue desarrollado para atender la estimacion de los parametros de modelos complejos (que incluyen *variables latentes* y *parametros*) simultaneamente.
+
+Suponfamos que el modelo inclye varuiables latentes, i.e.
+$$
+p(x_i|\theta) = \int k(x_i|\gamma_i) g(\gamma_i|\theta) d\gamma_i
+$$ 
+con la distribucion inicial $\pi(\theta)$ para el parametro. Las variables latentes son, en este caso $(\gamma_i)$.
+
+Bajo el enfoque bayesiano de inferencia, necesitamos calcular la distribucion final de *latentes* y *parametros*, dada por
+$$
+\pi(\gamma,\theta|datos) \propto \prod_{i=1}^{n}k(x_i|\gamma_i)g(\gamma_i|\theta) \pi(\theta),
+$$
+con $\gamma=(\gamma_1,\ldots,\gamma_n)$ y $datos=(y_1,\ldots,y_n)$.
+
+En la mayoria de los casos resulta imposible calcular la constante de normalizacion para el kernel anterior. 
+
+El *Gibbs sampler* permite aproximar la distribucion final de arriba con base en una sucesion de datos similados $\{(\theta^{(n)},\gamma^{(n)})\}_{n\geq 1}$ que tienen como distribucion asintotica (invariante) a esta distribucion final. 
+
+El algortimo procede recursivamente aplicando los siguientes pasos:
+
+1. Simular $\theta$ condicional en los $datos$ y en $\gamma$
+
+2. Simular $\gamma$ condicional en los $datos$ y en $\theta$
+
+Las distribuciones a partir de las cuales se simulan los datos en los pasos anteriores se conocen como distribuciones condicionales completas.
+
+Veamos los siguientes ejemplos.
+
+### Ejemplo con la distribucion normal-gamma
+
+El primer ejemplo es la distribucion normal-gamma.
+$$
+p(x,y) = Normal-Gamma(x,y), 
+$$
+donde 
+\begin{eqnarray}
+p(x|y)
+ & = &
+ Gamma\left(x|3,y^2+4\right)
+ \nonumber \\
+p(x|y)
+ & = &
+ N\left(y|(x+1)^{-1},(2x+2)^{-1/2}\right).
+ \nonumber 
+\end{eqnarray}
+
+```{r gibbs.gauss}
+gibbs_normalgamma <- function(M=50000,thin=1000){
+  #	Repositorio
+	repositorio <- matrix(NA, ncol=2, nrow=M)
+  #	Valores iniciales de la cadena
+	x <- 1
+  y <- 1
+  #	Iteraciones
+	m <- 1
+	for(m in 1:M) {
+		j <- 1
+        for (j in 1:thin) {
+            x <- rgamma(1,3,y^2+4)
+            y <- rnorm(1,1/(x+1),1/sqrt(2*x+2))
+        }
+        repositorio[m,] <- c(x,y)
+    }
+	#	Resultado
+  names(repositorio) <- c("x","y")
+  return(repositorio)
+}
+
+#	----------------------------------------------------
+#		Exemplo 1: Distribución Normal-Gamma
+#	----------------------------------------------------
+M <- 10000
+thin <- 1000
+ejemplo1.out <-gibbs_normalgamma(M,thin)
+
+# Histograma de "x"
+hist(ejemplo1.out[,1],M/100)
+
+# Histograma de "x"
+hist(ejemplo1.out[,2],M/100)
+
+# Trayectorias de "x"
+plot(ejemplo1.out[,1],type='l')
+
+# Trayectorias de "y"
+plot(ejemplo1.out[,2],type='l')
+
+# Medias erg?dicas de "x"
+plot(as.matrix(cumsum(ejemplo1.out[,1]))/as.matrix(c(1:M)))
+
+# Medias erg?dicas de "y"
+plot(as.matrix(cumsum(ejemplo1.out[,2]))/as.matrix(c(1:M)))
+
+	#	Dispersión
+	plot(ejemplo1.out,col=1:M)
+	#	Trayectorias conjuntas
+	plot(ejemplo1.out,type="l")
+	#	Trayectorias individuales
+	plot(ts(ejemplo1.out[,1]))
+	plot(ts(ejemplo1.out[,2]))
+	#	Histogramas
+	hist(ejemplo1.out[,1],40)
+	hist(ejemplo1.out[,2],40)
+
+#	Gráficas de diagn?stico (autocorrelaci?n)
+	#	Trayectorias individuales
+	plot(ts(ejemplo1.out[,1]))
+	plot(ts(ejemplo1.out[,2]))
+	#	Trayectorias individuales
+	acf(ts(ejemplo1.out[,1]))
+	acf(ts(ejemplo1.out[,2]))
+	# Medias erg?dicas de "x"
+	plot(as.matrix(cumsum(ejemplo1.out[,1]))/as.matrix(c(1:M)))
+	# Medias erg?dicas de "y"
+	plot(as.matrix(cumsum(ejemplo1.out[,2]))/as.matrix(c(1:M)))
+
+```
+
+### Ejemplo con la distribucion normal bivariada
+
+Ahora consideremos el caso donde $(x,y)$ siguen una distribucion normal bivariada, dada por
+\begin{equation}
+p(x,y) = N\left( (x,y)|(0,0),\Sigma\right),
+\end{equation}
+donde 
+$$
+\Sigma =  \left(
+          \begin{array}
+          1 & \rho \\
+          \rho & 1
+          \end{array}
+          \right)
+$$
+```{r gauss.bivar}
+gibbs_bigaussian <- function(M=10000, rho=0.98){
+  #	Repositorio
+  repositorio <- matrix(NA, ncol=2, nrow=M)
+  #	Valores iniciales
+  x <- 0
+  y <- 0
+  repositorio[1, ] <- c(x, y)
+  #	Iteraciones
+  m <- 2
+  for(m in 2:M){
+    x <- rnorm(1, rho * y, sqrt(1 - rho^2))
+    y <- rnorm(1, rho * x, sqrt(1 - rho^2))
+    repositorio[m, ] <- c(x, y)
+  }
+  #	Resultado
+  names(repositorio) <- c("x1","x2")
+  return(repositorio)
+}
+
+#		Exemplo 2: Distribucion Normal Bivariada
+M <- 10000
+rho <- 0
+ejemplo2.out <- gibbs_bigaussian(M,rho)
+
+#	Gr?ficas de diagn?stico
+	#	Dispersi?n
+	plot(ejemplo2.out,col=1:M)
+	#	Trayectorias conjuntas
+	plot(ejemplo2.out,type="l")
+	#	Trayectorias individuales
+	plot(ts(ejemplo2.out[,1]))
+	plot(ts(ejemplo2.out[,2]))
+	#	Histogramas
+	hist(ejemplo2.out[,1],40)
+	hist(ejemplo2.out[,2],40)
+
+#	Gr?ficas de diagn?stico (autocorrelaci?n)
+	#	Trayectorias individuales
+	plot(ts(ejemplo2.out[,1]))
+	plot(ts(ejemplo2.out[,2]))
+	#	Trayectorias individuales
+	acf(ts(ejemplo2.out[,1]))
+	acf(ts(ejemplo2.out[,2]))
+	#	Histogramas
+	hist(ejemplo2.out[,1],40)
+	hist(ejemplo2.out[,2],40)
+```

@@ -1,0 +1,349 @@
+---
+title: "S01 - Estimación de curvas (*regresión unidimensional*)"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+```
+
+## Datos
+
+Iniciamos la sesión importando los datos `Curve_Data.Rdata` del repositorio del curso.
+
+```{r curve_data, echo=TRUE}
+rm(list=ls())
+githubURL <- "https://github.com/jcmartinezovando/est25134_2017a/raw/master/datos/Curve_Data.RData"
+
+# For Windows
+load(url(githubURL))
+
+# If trouble, try this on Linux or iOS
+download.file(githubURL,"Curve_Data")
+load("Curve_Data")
+ls()
+
+# Libraries
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(MASS)
+library(RColorBrewer)
+```
+
+Pensemos que deseamos descrifrar el patrón de la relación que subyace a los `datos` representados en la siguiente gráfica (considerando $y$ como variable de respuesta).
+
+```{r curve_plot, echo=TRUE}
+plot(datos, pch=19, cex=.4, col="blue")
+summary(datos)
+```
+
+## Contexto
+
+En esta sesión revisaremos los conceptos fundamentales para la estimación de curvas de modelos relacionales. Iniciaremos con la estimación de curvas de respuesta en una dimensión.
+
+El modelo que estaremos explorando es el que empezamos a estudiar en la sesión anterior, i.e. $Y$ es la variable de respuesta (con soporte en $\Re$), y $X$ es un conjunto de covariables (tomando valores en $\Re^p$).
+
+Así, La relación de $Y$ en respuesta de $X$ es
+$$
+Y|X \sim N(y|f(X),\sigma^2)
+$$
+
+En este caso, la esperanza de $Y$ condicional en $X$ es,
+$$
+\mathbb{E}(y|X)=f(X),
+$$
+suponiendo que $f(\cdot)$ tiene una forma structural flexible. En particular, trabajaremos en el ejemplo de esta sesion con $f$ miembro de la clase de funciones polinomiales, con
+$$
+f(x)=\sum_{j=0}^{\infty}\alpha_j \phi_j(x),
+$$
+donde 
+$$
+\phi_j(x)=x^{j},
+$$
+con $x\in (0,1)$.
+
+Los `datos` $(y,x)$ corresponden a la **muestra de entrenamiento**. Iniciamos realizando una inspección descriptiva de los datos (primeros 100), contrastada con $f$ ***(aunque, en aplicaciones reales no la conocemos)***.
+
+```{r curve_descripcion, echo=FALSE}
+library(ggplot2)
+x_plot <- seq(0,1,0.01)
+y_plot <- f(x_plot)
+ggplot(datos[c(1:100),], aes(x=x, y=y), colour='red')+
+  geom_point() +
+  annotate("line", x=x_plot, y=y_plot, linetype="dotted")
+```
+
+## Especificación del modelo
+
+Aunque consideramos que $f$ forma parte de la clase de la clase de todos los posibles polinomios en $x$, en la práctica consideraremos generalmente una versión simplificada de su expansión (en este caso, restringiendo el orden de los polinomios a lo más igual a $J$), i.e.
+$$
+f(x)=\sum_{j=0}^{J}\alpha_j \phi_j(x).
+$$
+En nuestra aplicación, $J$ es fijo y conicido; más adelante en el curso exploraremos el caso donde $J$ sea aleatorio (a.k.a. desconocido).
+
+Así, los parámetros del modelo son ahora,
+$$
+\boldsymbol{\alpha}=(\alpha_0,\ldots,\alpha_J) \ \ \text{y} \ \ \sigma^2.
+$$
+
+## Aprendizaje frecuentista
+
+El aprendizaje en este modelo lo realizaremos empleando **máxima verosimilitud**, cuyos estimadores coinciden con los obtenidos por **mínimos cuadrados**, i.e.
+
+```{r}
+f_mle <- function(datos, J){
+  lm(y ~ poly(x, degree=J, raw = TRUE), 
+     data = datos)
+  }
+```
+
+De esta forma, los estimadores puntuales para $\alpha$ son
+
+
+Las $\hat{\alpha_j}$ están dadas por:
+
+```{r}
+f_alpha <- f_mle(datos, J=6)
+data.frame(coef = coef(f_alpha))
+```
+
+Notemos que en este caso los datos de entrenamiento corresponden con la muestra completa. Contrastando con la verdadera función $f$ (empleando una submuestra de los primeros 100 datos para efectos de graficación) tenemos,
+
+```{r}
+dat <- data.frame(
+        x = x_plot, 
+        prediccion = predict(f_alpha, newdata=data.frame(x=x_plot)),
+        esperado = y_plot)
+
+data_plot <- dat %>% 
+        gather(tipo, valor, prediccion:esperado)
+head(data_plot)
+
+ggplot(data_plot, aes(x=x, y=valor, linetype=tipo )) + 
+    geom_line() +
+    ylim(c(-3,3)) +
+    annotate("point",x=datos$x, y=datos$y, colour="green")
+```
+
+El error cuadratico del aprendizaje de este modelo se calcula como,
+$$
+\sum_{i=1}^{n}(y_i-\hat{y}_i)^2,
+$$
+donde 
+$$
+\hat{y}_i = \hat{f}(x_i)=\sum_{j=0}^{J}\hat{\alpha}_j\phi(x_i),
+$$
+con $\phi(x_i)=x_i^j$, para $j=1,\ldots,J$, en nuestro caso. Es decir,
+```{r}
+y_fit <- predict(f_alpha, newdata = datos)
+mean((datos$y - y_fit)^2)
+cor(datos$y,y_fit)
+k <- 11
+colors <- rev(brewer.pal(k, "RdYlBu"))
+contour <- kde2d(datos$y, y_fit, n=50)
+plot(cbind(datos$y,y_fit), xlab="y", ylab="y_fit", pch=19, cex=.4, col="grey")
+contour(contour, drawlabels=FALSE, nlevels=k, col=colors, add=TRUE)
+abline(h=mean(y_fit), v=mean(datos$y), lwd=2)
+```
+
+#### Predicción frecuentista
+
+Habiendo aprendido del modelo, a través de $\hat{\boldsymbol{\alpha}}$ y $\hat{\sigma}^{2}$, la predicción que podemos realizar para un conjunto de datos de prueba (o predicción) $\{x^{f}_1,\ldots,x^{f}_m\}$ se obtiene a través de la **distribución predictiva**,
+
+\begin{eqnarray}
+\mathbb{P}(Y^{f}_1,\ldots,Y^{f}_m|x^{f}_1,\ldots,x^{f}_m,\hat{\boldsymbol{\alpha}},\hat{\sigma}^{2})
+ & = &
+ \prod_{j=1}^{m}N(Y^{f}_{j}|\hat{f}(x^{f}_j),\hat{\sigma}^{2}),
+ \label{eq_pred_frec}
+\end{eqnarray}
+donde $\hat{f}(x^{f}_j)=\sum_{k=0}^{J}\hat{\alpha}_k\phi_{k}(x^{f}_j)$, para $j=1,\ldots,J$. 
+
+Noten que las variables $(Y^{f}_1,\ldots,Y^{f}_m)$ de la ecuación anterior no han sido observadas aún cuando $\{x^{f}_1,\ldots,x^{f}_m\}$ son **datos para predicción**. Sin embargo, cuando los **datos son de prueba**, $\{(y^{f}_1,x^{f}_1),\ldots,(y^{f}_1,x^{f}_m)\}$ son observados, pero excluidos del procedimiento de aprendizaje.
+
+La distribución predictiva (\ref{eq_pred_frec}) se conoce como *plug-in*.
+
+#### Validación del modelo
+
+La validacición del modelo se realiza tradicionalmente empleando la suma de cuadrados de los errores aplicada a un conjunto de **datos de prueba** observados, $\{(y^{f}_1,x^{f}_1),\ldots,(y^{f}_1,x^{f}_m)\}$, el cual se define como
+\begin{equation}
+RSS(\hat{f})=\sum_{i=1}^{m}(y^{f}_i-\hat{y}^{f}_i)^{2},
+\end{equation}
+donde 
+$$
+\hat{y}^{f}_i = \hat{f}(x^{f}_i),
+$$
+para $i=1,\ldots,m$.
+
+En el contexto de tener un conjunto de datos de aprendizaje de tamaño moderado (o que computacionalmente sea poco costoso de manipular), puede definirse la validación del modelo a través de la suma de cuadrados de **datos de validación cruzada**, definido como
+\begin{equation}
+RSS(\hat{f})=\sum_{i=1}^{n}(y_i-\hat{y}_i)^{2},
+\end{equation}
+donde 
+$$
+\hat{y}_i = \hat{f}_{-i}(x_i),
+$$
+con $\hat{f}_{-i}(\cdot)=\sum_{j=0}^{J}\hat{\alpha}_{j,-i}\phi_{j}(\cdot)$ para $i=1,\ldots,n$. En la expresión anterior los estimadores $(\hat{\alpha}_{j,-i})_{j=0}^J$ se obtienen por máxima verosimilitud o mínimos cuadrados obtenidos con la muestra de aprendizaje, $\{(y_l,x_l)\}_{l=1}^{n}$, excluyendo la $i$-ésima observación.
+
+## Aprendizaje bayesiano
+
+Bajo el enfoque bayesiano de aprendizaje, es necesario complementar la especificación del modelo, como está contemplado en las líneas anteriores, con una distribución inicial sobre $f$ (la función de regresión). Cuando consideramos que $f(x)$ está expresada en términos de una expansión de funciones base (con $J$ finito), se tiene que la distribución inicial para la curva, considerando $x$ fija, es
+$$
+\pi(f)=\pi(\boldsymbol{\alpha}),
+$$
+donde $\boldsymbol{\alpha}=(\alpha_0,\ldots,\alpha_J).$ Notemos que la especificacion de la distribuci[on inicial no se restringir[a solamente a los coeficientes de regresion de la curva, $f(x)$, sino a la posible dispersion asociada, $\sigma^{2}$. Asi, la distribucion inicial practica, para un $J$ fijo, es
+$$
+\pi(f)=\pi(\boldsymbol{\alpha},\sigma^{2}).
+$$
+
+Como mencionamos, consideraremos dos tipos de distribuciones iniciales sobre $\boldsymbol{\alpha}$:
+
+1. Objetivo (no informativo)
+2. Conjugado (puede o no ser informativo).
+
+### Aprendizaje bayesiano objetivo
+
+En este caso, la distribucion inicial torna de la forma,
+$$
+\pi(\boldsymbol{\alpha},\sigma^{2}) 
+  \propto
+  1/\sigma
+  \boldsymbol{1}_{\Re^{J+1}\times \Re_{+}}(\boldsymbol{\alpha},\sigma^2).
+$$
+
+Notemos que esta distribucion inicial **no es propia** (en el sentido que integre a 1 en su soporte, o que la integral sobre su soporte sea finita, al menos). Este no es un problema, pues el **procedimiento bayesiano de aprendizaje**, arroja una distribucion final propia para $(\boldsymbol{\alpha},\sigma^2)$, a momento de incorporar datos de entrenamiento.
+
+El procedimiento consiste en calcular la distribucion de $(\boldsymbol{\alpha},\sigma^2)$ condicional en la muestra de entrenamiento, $\{(y_i,x_1)\}_{i=1}^{n}$, i.e.
+
+\begin{eqnarray}
+\pi(\boldsymbol{\alpha},\sigma^{2}| \{(y_i,x_1)\}_{i=1}^{n}) 
+ & = &
+ \frac{\mathbb{P}(\boldsymbol{\alpha},\sigma^{2}, \{(y_i,x_1)\}_{i=1}^{n})}
+ {\mathbb{P}(\{(y_i,x_1)\}_{i=1}^{n})}
+ \\
+ & = &
+ \frac{\prod_{i=1}^{n}N(y_i|f(x_i),\sigma^{2}) \times   
+ \pi(\boldsymbol{\alpha},\sigma^{2})}
+ {\int \prod_{i=1}^{n}N(y_i|f(x_i),\sigma^{2}) \times   
+ \pi(\boldsymbol{\alpha},\sigma^{2}) d\boldsymbol{\alpha}d\sigma^{2}}\\
+ & \propto &
+ \prod_{i=1}^{n}N(y_i|f(x_i),\sigma^{2}) \times   
+ \pi(\boldsymbol{\alpha},\sigma^{2})\\
+ & = &
+ Norm-GInv(\boldsymbol(\boldsymbol{\alpha},\sigma^{2})|
+ \boldsymbol{m}_1,\boldsymbol{S}_1,a_1.b_1),
+ 
+\end{eqnarray}
+
+donde 
+
+\begin{eqnarray}
+\boldsymbol{m}_1 & = & (\tilde{X}_J'\tilde{X}_J)^{-1}\tilde{X}_J' y\\
+\boldsymbol{S}_1 & = & (\tilde{X}_J'\tilde{X}_J)^{-1}\\
+a_1 & = & \frac{n-(J+1)}{2}\\
+b_1 & = & \frac{1}{n-(J+1)}(y-\tilde{X}_J\boldsymbol{m}_1)'(y-\tilde{X}_J\boldsymbol{m}_1)
+.
+\end{eqnarray}
+
+#### Prediccion objetiva
+
+Bajo el enfoque bayesiano de apredizaje, la distribución predictiva se obtiene como el promedio del modelo, en función de los parámetros, ponderados por la distribución posterior correspondiente. En este caso, la **distribución predicitva** para el conjunto de datos $\{x^{f}_1,\ldots,x^{f}_m\}$ se obtiene como
+\begin{eqnarray}
+\mathbb{P}(Y^{f}_1,\ldots,Y^{f}_m|x^{f}_1,\ldots,x^{f}_m)
+  & = &
+  \int
+  \prod_{i=1}^{m}N\left(Y^{f}_i|f(x^{f}_i),\sigma^{2}\right)
+  \pi\left(\boldsymbol{\alpha},\sigma^{2}|(y_{1},x_{1}),\ldots, (y_{n},x_{n})\right)
+  d\boldsymbol{\alpha} d\sigma^{2}
+  \nonumber \\
+  & = &
+  t_{m}\left(\boldsymbol{y}^{f}|\tilde{\boldsymbol{X}}^{f}\boldsymbol{\alpha}^{*},
+  s^{2}
+  (\mathbb{I}+
+  \boldsymbol{M}),
+  m-(J+1)
+  \right),
+\end{eqnarray}
+donde $f(x^{f}_i)=\sum_{j=0}^{J}\alpha_j\phi(x^{f}_i)$, $\{(y_{i},x_{i})\}_{i=1}^{n}$ son los **datos de aprendizaje**, $\boldsymbol{y}^{f}$ es el vector de dimensión $m\times 1$ para $(Y^{f}_i)_{i=1^{m}}$ y $\tilde{\boldsymbol{X}}^{f}$ es la matriz de diseño de dimensión $(m\times(J+1))$ inducida por la aplicación de las funciones base $(\phi_{j})_{j=0}^{J}$ sobre los datos de predicción $(x^{f}_i)_{i=1}^{m}$ y $\boldsymbol{M}=\tilde{\boldsymbol{X}}^{f'}(\tilde{\boldsymbol{X}}^{f'}\tilde{\boldsymbol{X}}^{f})^{-1}\tilde{\boldsymbol{X}}^{f}$. Aquí, $t_{m}$ denota la distribución $t$-Student de dimensión $m$. En el siguiente párrafo exploraremos $\boldsymbol{\alpha}^{*}$.
+
+En modelos complejos (incluyendo este polinomial que estudiamos ahora), la evaluación de la distribución predictiva bayesiana puede ser costosa computacionalmente. Cuando sea el caso, podemos trabajar con una **pseudo distribución predictiva** localizada (o centrada) en la moda de la distribución final $\pi(\boldsymbol{\alpha},\sigma^{2}|(y_{1},x_{1}),\ldots, (y_{n},x_{n}))$. Definamos la moda como
+\begin{equation}
+\boldsymbol{\alpha}^{*},\sigma^{2*} = \arg\max_{\boldsymbol{\alpha},\sigma^{2}} \pi(\boldsymbol{\alpha},\sigma^{2}|(y_{1},x_{1}),\ldots, (y_{n},x_{n})).
+\end{equation}
+
+Cuando la distribuci\'on final de de la distribuci\'on predictiva se obtiene bajo el enfoque objetivo de inferences, la **pseudo distribucion predictiva** coincide con la obtenida por m\'etodos frecuentistas.
+
+Bajo el enfoque objetivo de aprendizaje, la **pseudo distribución predictiva** toma la forma,
+
+\begin{eqnarray}
+\mathbb{P}(Y^{f}_1,\ldots,Y^{f}_m|x^{f}_1,\ldots,x^{f}_m)
+  & = &
+  \prod_{i=1}^{m}N(Y^{f}_i|f^{*}(x^{f}_i),\hat{\sigma}^{2}),
+  \
+\end{eqnarray}
+donde $f^{*}(x^{f}_i)=\sum_{j=0}^{J}\alpha_{j}^{*}\phi_{j}(x^{f}_i)$, siendo las $\alpha^{*}_j$s las entradas de la moda de la distribucion final. En este caso, la moda de la distribución final coincide con los estimadores de máxima verosimilitud; por lo que el procedimiento frecuentista y bayesiano coinciden numéricamente (más no conceptualmente, cabe resaltar).
+
+### Aprendizaje bayesiano conjugado
+
+Supongamos que la distribucion inicial para $(\boldsymbol{\alpha},\sigma^2)$ es normal-gamma-inversa,
+\begin{equation}
+  \pi(\boldsymbol{\alpha},\sigma^2) = N(\boldsymbol{\alpha}|m_0,\sigma^2 S_0) GInv (\sigma^2|a_0,b_0),
+\end{equation}
+como definimos antes. Se dice que esta distribucion es conjugada debido a que al calcular la distribuci\'on final de $(\boldsymbol{\alpha},\sigma^2)$ dado un conjunto de par\'ametros, esta es norma-gamma-inversa tambi\'en, pero con par\'ametros actualizados.
+
+De esta forma, la distribuci\'on final para $(\boldsymbol{\alpha},\sigma^2)$ dado un conjunto de parametros $\{(y_i,x_i)\}_{i=1}^{n}$ es,
+\begin{equation}
+ \pi\left(\boldsymbol{\alpha},\sigma^2|\{(y_i,x_i)\}_{i=1}^{n}\right) \propto
+ \left(\frac{1}{\sigma^2}\right)^{a_0+(n+p)/2 + 1} 
+ \exp\left\{-\frac{1}{\sigma^2}\left(b_1+1/2(\boldsymbol{\alpha}-m_1)'S_1(\boldsymbol{\alpha}-m_1)\right)\right\},
+\end{equation}
+donde 
+\begin{eqnarray}
+m_1 
+  & = &
+  (S_0+\tilde{X}_J'\tilde{X}_J)^{-1}(S_0^{-1}m_0 + \tilde{X}_Jy)
+  \nonumber\\
+S_1 
+  & = &
+  (S_0+\tilde{X}_J'\tilde{X}_J)^{-1}
+  \nonumber\\
+a_1 
+  & = &
+  a_0+ n/2
+  \nonumber\\
+b_1 
+  & = &
+  b_0+1/2 \left(m_0'S_0 m_0 + y'y - m_1'S_1 m_1 \right).
+  \nonumber
+\end{eqnarray}
+
+<span style="color:blue">
+**Nota:** La idea detras del aprendizaje bayesiano conjugado es la de definir una distribucion inicial para los parametros que sea estructuralmente semejante a la verosimilitud, de tal forma que la distribucion final (con kernel dado por el producto de inicial y verosimilitud) comparta la misma forma funcional, salvo los valores de ciertos parametros.
+</span>
+
+As\'i, notemos que la distribuci\'on final marginal para $\sigma^2$ es gamma-inversa, mientras que la distribuci\'on final marginal para $\boldsymbol{\alpha}$ es $t$-Student con $2a_1$ grados de libertad.
+
+<span style="color:red">
+**Observaci\'on:** El resultado anterior descansa en la siguiente identidad algebraica,
+\begin{equation}
+v'Sv-2a'v =
+(v-S^{-1}a)'S(v-S^{-1}a)-a'S^{-1}a,
+\end{equation}
+donde $a$ y $v$ son dos vectores de dimension compatible y $S$ es una matriz positivo definida sim\'etrica, de dimensi\'on compatible tambi\'en.
+</span>
+
+
+#### Prediccion conjugada
+
+
+## Referencias
+
+* ***James et al.*** --- Secciones: **7.1-7.3** (funciones base), **3.1** (regresión lineal), **5.1** (validación cruzada)
+
+* ***Barber*** --- Capítulos: **17** (modelo lineal), **18** (modelo lineal bayesiano), **8-10** (aspectos inferenciales/aprendizaje)
+
+* ***Hastie et al.*** --- Secciones: **5.1-5.3** (funciones base), **3.1-3.2** (modelo lineal), **7.1, 7.4, 7.5, 7.6** (evaluación del modelo)

@@ -1,0 +1,166 @@
+---
+title: "Visualization Multivariate Data"
+author: "Juan Carlos Martinez Ovando"
+date: "29 March 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+The ability to generate synthetic data with a specified correlation structure is essential to modeling work. 
+
+As you might expect, `R`s toolbox of packages and functions for generating and visualizing data from multivariate 
+distributions is impressive. The basic function for generating multivariate normal data is `mvrnorm()` from the MASS package included in base R, although the mvtnorm package also provides functions for simulating both multivariate normal and t distributions. (For tutorial on how to use R to simulate from multivariate normal distributions from first principles using some linear algebra and the Cholesky decomposition see the astrostatistics tutorial on Multivariate Computations.)
+
+The following block of code generates 5,000 draws from a bivariate normal distribution with mean (0,0) and covariance matrix Sigma printed in code. The function `kde2d()`, also from the Mass package generates a two-dimensional kernel density estimation of the distribution's probability density function. 
+
+<a href="https://stat.ethz.ch/pipermail/r-help/2003-September/038314.html">SIMULATING MULTIVARIATE DATA</a>
+
+---
+
+**Packages**
+
+```
+install.packages("ellipse")
+install.packages("threejs")
+install.packages("rgl")
+install.packages("tmvtnorm")
+install.packages("corrplot")
+install.packages("clusterGeneration")
+```
+
+---
+
+Lets first simulate a bivariate normal sample:
+
+```{r}
+library(MASS)
+
+# Simulate bivariate normal data
+mu <- c(0,0)                         # Mean
+Sigma <- matrix(c(1, .5, .5, 1), 2)  # Covariance matrix
+Sigma
+
+# Generate sample from N(mu, Sigma)
+bivn <- mvrnorm(5000, mu = mu, Sigma = Sigma )  # from Mass package
+head(bivn)                                      
+```
+
+Calculate kernel density estimate
+
+```{r}
+bivn.kde <- kde2d(bivn[,1], bivn[,2], n = 50)   # from MASS package
+```
+
+`R` offers several ways of visualizing the distribution. These next two lines of code overlay a contour plot on a "heat Map" that maps the density of points to a gradient of colors.
+
+Contour plot overlayed on heat map image of results:
+
+```{r}
+image(bivn.kde)       				# from base graphics package
+contour(bivn.kde, add = TRUE)     	# from base graphics package
+```
+
+This plots the irregular contours of the simulated data. The code below which uses the `ellipse()` function from the ellipse package generates the classical bivariate normal distribution plot that graces many a textbook.
+
+Classic Bivariate Normal Diagram:
+
+```{r}
+library(ellipse)
+rho <- cor(bivn)
+y_on_x <- lm(bivn[,2] ~ bivn[,1])    # Regressiion Y ~ X
+x_on_y <- lm(bivn[,1] ~ bivn[,2])    # Regression X ~ Y
+plot_legend <- c("99% CI green", "95% CI red","90% CI blue",
+                 "Y on X black", "X on Y brown")
+ 
+plot(bivn, xlab = "X", ylab = "Y",
+     col = "dark blue",
+     main = "Bivariate Normal with Confidence Intervals")
+lines(ellipse(rho), col="red")       # ellipse() from ellipse package
+lines(ellipse(rho, level = .99), col="green")
+lines(ellipse(rho, level = .90), col="blue")
+abline(y_on_x)
+abline(x_on_y, col="brown")
+legend(3,1,legend=plot_legend,cex = .5, bty = "n")
+```
+
+The next bit of code generates a couple of three dimensional surface plots. The second of which is an rgl plot that you will be able to rotate and view from different perspectives on your screen.
+
+Three dimensional surface (basic perspective plot):
+```{r}
+persp(bivn.kde, phi = 45, theta = 30, shade = .1, border = NA) # from base graphics package
+```
+
+RGL interactive plot
+
+```{r}
+library(rgl)
+col2 <- heat.colors(length(bivn.kde$z))[rank(bivn.kde$z)]
+persp3d(x=bivn.kde, col = col2)
+```
+
+Next, we have some code to unpack the grid coordinates produced by the kernel density estimator and get $x$, $y$, and $z$ values to plot the surface using the new scatterplot3js() function from the htmlwidgets, javascript `threejs` package. This visualization does not render the surface with the same level of detail as the rgl plot. Nevertheless, it does show some of the salient features of the pdf and has the distinct advantage of being easily embedded in web pages. I expect that html widget plots will keep getting better and easier to use.
+
+The `threejs` Javascript plot:
+
+```{r}
+library(threejs)
+# Unpack data from kde grid format
+x <- bivn.kde$x; y <- bivn.kde$y; z <- bivn.kde$z
+
+# Construct x,y,z coordinates
+xx <- rep(x,times=length(y))
+yy <- rep(y,each=length(x))
+zz <- z; dim(zz) <- NULL
+
+# Set up color range
+ra <- ceiling(16 * zz/max(zz))
+col <- rainbow(16, 2/3)
+
+# 3D interactive scatter plot
+scatterplot3js(x=xx,y=yy,z=zz,size=0.4,color = col[ra],bg="black")
+```
+
+The code that follows uses the rtmvt() function from the tmvtnorm package to generate bivariate $t$ distribution. The rgl plot renders the surface kernel density estimate of the surface in impressive detail.
+
+Draw from multi-t distribution without truncation:
+
+```{r}
+library (tmvtnorm)
+Sigma <- matrix(c(1, .1, .1, 1), 2)  # Covariance matrix
+X1 <- rtmvt(n=1000, mean=rep(0, 2), sigma = Sigma, df=2) # from tmvtnorm package
+ 
+t.kde <- kde2d(X1[,1], X1[,2], n = 50)   # from MASS package
+col2 <- heat.colors(length(bivn.kde$z))[rank(bivn.kde$z)]
+persp3d(x=t.kde, col = col2)
+```
+
+The real value of the multivariate distribution functions from the data science perspective is to simulate data sets with many more than two variables. The functions we have been considering are up to the task, but there are some technical considerations and, of course, we don't have the same options for visualization. The following code snippet generates 10 variables from a multivariate normal distribution with a specified covariance matrix. 
+
+Note that I've used the `genPositiveDefmat()` function from the `clusterGeneration` package to generate the covariance matrix. This is because `mvrnorm()` will throw an error, as theory says it should, if the covariance matrix is not positive definite, and guessing a combination of matrix elements to make a high dimensional matrix positive definite would require quite a bit of luck along with some serious computation time.
+
+After generating the matrix, I use the `corrplot()` function from the `corrplot` package to produce an attractive pairwise correlation plot that is coded both by shape and color. `corrplot()` scales pretty well with the number of variables and will give a decent chart with 40 to 50 variables. (Note that now ggcorrplot will do this for `ggplot2` plots.)  Other plotting options would be to generate pairwise scatter plots and R offers many alternatives for these.
+
+Higher Dimensional Distributions
+
+```{r}
+library(corrplot)
+library(clusterGeneration)
+mu <- rep(0,10)
+pdMat <- genPositiveDefMat(10,lambdaLow=10)
+Sigma <- pdMat$Sigma
+dim(Sigma)
+mvn <- mvrnorm(5000, mu = mu, Sigma = Sigma )
+ 
+corrplot(cor(mvn), 
+         method="ellipse",
+         tl.pos="n",
+         title="Matrix Correlations")
+```
+
+Finally, what about going beyond the multivariate normal and t distributions? `R` does have a few functions like rlnorm() from the compositions package which generates random variates from the multivariate lognormal distribution that are as easy to use as `mvrorm()`, but you will have to hunt for them. I think a more fruitful approach if you are serious about probability distributions is to get familiar with the copula package.
+

@@ -1,0 +1,159 @@
+---
+title: "Sesion 10: Clasificacion no supervisada"
+author: "Juan Carlos Martinez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+--------------------
+
+# II. Basados en mezclas de distribuciones
+
+La representacion tipica de un conjunto de datos bidimensionales asignados a diferentes categorias/grupos/clases se muestra en la siguiente figura:
+
+<img src="Figures/Clusters.jpg" height="50%" width="50%">
+
+Si $x$ representa, en general, un punto en el espacio euclidiano $p$-dimensional, entonces la representacion del modelo que caracterizaria la asignacion de clases anterior estaria dada en terminos de la siguiente mezcla de distribuciones:
+\begin{equation}
+F(x)=\sum_{k=1}^{K} \omega_k F(x|\theta_k),
+\end{equation}
+donde
+
+* $K$ - numero de clases 
+
+* $(\mathcal{C}_k)_{k=1}^{K}$ - clases de asignacion
+
+* $(\omega_k)_{k=1}^{K}$ - conjunto de pesos/probabilidades de asignacion, con la interpretacion
+  $$
+  \omega_k = \mathbb{P}\left(x \in \mathcal{C}_k\right)
+  $$
+
+_Nota que cada $x$ pertenece a una y solo una clase._
+
+* $F(x|\theta_k)$ - _kernel_ que describe la variabilidad de los datos al interior de la clase $\mathcal{C}_k$ 
+
+_Usualmente, los kernels $F(x|\theta_k)$ comparten la misma forma estructural, difiriendo solamente en terminos de los parametros $\theta_k$._
+
+Los parametros del modelo de mezclas se definen como el conjunto
+$$
+\left\{K,(\omega_k)_{k=1}^{K},(\theta_k)_{k=1}^{K}\right\}.
+$$
+Usualmente, el numero de clases $K$ se toma como *fijo* aunque desconocido.
+
+Modelos mas flexibles involucran una especificacion aleatoria para $K$, en cuyo caso la estimacion conjunta de estos parametros torna de naturaleza _transdimensional._
+
+## Variables latentes
+
+El aprendizaje estadistico en la clase de modelos tipo mezcla se facilita incluyendo *variables latentes de asignacion*. Asi, para un conjunto de `datos` $\{x_1,\ldots,x_n\}$ se define 
+$$
+Z_i=k\ \  \text{, si } \ \ x_i\in\mathcal{C}_k,
+$$
+para $k=1,\ldots,K$, con
+$$
+\mathbb{P}(Z_i=k)=\omega_k.
+$$
+Es decir, las variables latentes de asignacion $(Z_i)_{i=1}^{K}$ son condicionalmente independientes dadas las $\omega_k$s y tienen una distribucion multinomial,
+$$
+Z_i \sim Mult(z|\omega_1,\ldots,\omega_K).
+$$
+*Los pesos/probabilidades $(\omega_k)_{k=1}^{K}$ toman valores dentro del simplex $(K-1)$-dimensional, siendo el componente $\omega_K$ determinado por $\omega_1,\ldots,\omega_{K-1}$.*
+
+En el caso en que $K=3$, la variabilidad de los pesos $\omega_1$ y $\omega_2$ podran ser descrita por las siguientes graficas:
+
+<img src="Figures/Dirichlet.jpg" height="50%" width="50%">
+
+Las graficas corresponden a las curvas de nuvel de la distribucion `Dirichlet` (generalizacion de la distribucion `beta`) de dimension tres.
+
+El aprendizaje en la clase de modelos tipo mezcla consiste en estimar, en primera instancia, el conjunto de `parametros`, $\left\{K,(\omega_k)_{k=1}^{K},(\theta_k)_{k=1}^{K}\right\}$, y `variables latentes`, $(Z_i)_{i=1}^{n}$ con base en los `datos` $(x_i)_{i=1}^{n}$. 
+
+_No existe forma de realizar esta estimacion de manera analitica cerrada, por lo que el aprendizaje dependera tipicamente en metodos numericos de aproximacion basados en simulacion estocastica._
+
+--------------------
+
+## II-a) Aprendizaje frecuentista
+
+El aprendizaje frecuentista consiste en la maximizacion de la **funcion de verosimilitud** para los `parametros`, o, en este caso, la **funcion de verosimilitud extendida** para `parametros` y `variables latentes`. Ninguna de estas funciones es maximizable de manera analitica cerrada, por lo que el aprendizaje depende del algoritmo EM que vimos en sesiones previas.
+
+**Pasos del algoritmo EM:**
+
+* Estimamos $\theta_k$s que maximicen $\mathbb{P}(x,Z|\theta)$. Pero siendo que $z$ no es observada, solo se puede maximizar $\mathbb{E}_{Z|x,\theta}\left[\mathbb{P}(x,z|\theta)\right]$
+
+* Como las $Z_i$ son desconocidas, podremos 'reproducirlas' con la distribucion $\mathbb{P}\left[Z|x,\theta\right]$
+
+El algoritmo es iterativo simulando $Z_i$s y $\theta_k$s hasta que la variabilidad de las $\theta_k$s iteracion a iteracion sea estable.
+
+### E1) Mezcla de _kernels_ gaussianos
+
+Ilustraremos el algoritmo EM en mezclas considerando que los _kernels_ de la mezcla de modelos son gaussianos con `parametros` de media y varianza desconocidos, i.e.
+$$
+F(x|\theta_k) = N(x|\mu_k,\Sigma_k),
+$$
+con $\theta_k=\left(\mu_k,\Sigma_k\right)$, para $k=1,\ldots,K$, donde $\mu_k$ es un vector $p$-dimensional y $\Sigma_k$ es una matriz simetrica positivo definida de dimension $(p\times p)$.
+
+La implementacion de este aprendizaje se realiza empleando el paquete `mclust` en `R`:
+
+```
+install.packages("mclust")
+```
+
+Y la implementacion:
+
+```
+library(mclust)
+mc <- Mclust(iris[,1:4], 3)
+summary(mc)
+plot(mc, what=c("classification"), dimens=c(1,2))
+plot(mc, what=c("classification"), dimens=c(3,4))
+table(iris$Species, mc$classification)
+```
+
+--------------------
+
+## II-b) Aprendizaje bayesiano
+
+El aprendizaje bayesiano del modelo de mezclas contempla la asignacion de distribuciones iniciales sobre el conjunto de `parametros`,
+
+Usualemente, las distribuciones iniciales se definen `condicionalmente conjugadas` en la clase de modelos particulares.
+
+**Mezcla de gaussianas**
+
+En el caso de la mezcla de distribuciones gaussianas,
+
+$$
+\pi\left(\omega_1,\ldots,\omega_K\right) = `Dirichlet`
+$$
+y
+$$
+\pi\left(\mu_1,\Sigma_1,\ldots,\mu_K,\Sigma_K\right) = \prod_{k=1}^{K} `Normal/Wishart-Inversa`
+$$
+
+La distribucion final no puede calcularse de manera analitica cerrada, por lo que tradicionalmente se emplea el Gibbs sampler, como a continuaci[on se enuncia.]
+
+**Algoritmo: Gibbs sampler**
+
+0) `Input:` Datos $x=\{x_1,\ldots,x_n\}$, donde $x_i\in \mathbb{R}^{p}$ con $p$ finito, y el numero de componentes `K` y numero de simulaciones MCMC `M.sim`.
+
+1. `Initializacion:` Definimos las localizaciones iniciales $(\mu^{(0)}_k)_{k=1}^{K}$ y varianzas iniciales $(\Sigma^{(0)}_k)_{k=1}^{K}$, 
+2. `Iteraciones:` Para $m=1,\ldots,$`M.sim`:
+
+Para cada $i\in\{1,\ldots,n\}$ simular 
+$$
+Z_i^{(m)} \sim \pi\left(z_i|x,(\mu^{(m-1)}_k,\Sigma^{(m-1)}_k)_{k=1}^{K},
+(\omega_k^{(m-1)})_{k=1}^{K}\right)
+$$
+Para cada $k\in\{1,\ldots,K\}$ simular 
+  $$
+ \mu^{(m)}_k,\Sigma^{(m)}_k \sim \pi\left(\mu_k,\Sigma_k|x,(Z_i^{(m)})_{i=1}^{n}, (\omega_k^{(m-1)})_{k=1}^{K}\right)
+  $$
+Simular
+$$
+(\omega_k^{(m)})_{k=1}^{K} \sim \pi\left(z_i|x,(\mu^{(m)}_k,\Sigma^{(m)}_k)_{k=1}^{K}, (Z_i^{(m)})_{i=1}^{n}\right)
+$$
+
+--------------------
+
+## II-c) Extensiones

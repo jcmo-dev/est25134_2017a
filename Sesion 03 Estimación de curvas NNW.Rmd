@@ -1,0 +1,199 @@
+---
+title: "S03 - Estimación de curvas"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+library(ggplot2)
+library(dplyr)
+
+```
+
+# *Single Hidden Layer Feed Forward Neural Network* (SLNN)
+
+El modelo que comentaremos hoy se concoe como *Single Hidden Layer Feed Forward Neural Network*  (SLNN, por sus siglas en ingles). Este modelo relaciona radialmente la observacion escalar $y_i$ con un conjunto $p$-dimensional de covariables $\boldsymbol{x}_i$, para $i=1,\ldots,n$. El modelo sigue la siguiente especificacion,
+
+\begin{eqnarray}
+  y_i|\boldsymbol{x}_i 
+    & \sim &
+    N\left(y|f(\boldsymbol{x}_i),\sigma^{2}\right),
+    \ \ \ 
+    \text{ para }
+    \ \ \ 
+    i=1,\ldots,n,
+    \nonumber \\
+  f(\boldsymbol{x}_i)
+   & = &
+   \omega_{0} + \sum_{j=1}^{J} \omega_j \phi_{j}(||\boldsymbol{x}_i,\boldsymbol{\theta}_j||),
+   \nonumber \\
+  ||\boldsymbol{x}_i,\boldsymbol{\theta}_j||
+    & = & 
+    \theta_{j,0} + \sum_{k=1}^{p}x_{i,j}\theta_{j,k},
+    \nonumber \\
+  \phi_{j}(s)
+   & = &
+   \frac{2}{1+e^{-2s}},
+    \ \ \ 
+    \text{ para }
+    \ \ \ 
+    j=1,\ldots,J,
+   \nonumber
+\end{eqnarray}
+donde 
+
+* $\boldsymbol{x}_i=(x_{ij})_{j=1}^{p}$,
+
+* $(\omega_1, \ldots,\omega_J)$ son los `pesos` de la red, 
+
+* $\omega_0$ es el parametro de `sesgo primario` y $(\theta_{j.0})_{j=1}^{J}$ son los parametros de `sesgo secundario`
+
+* los parametros $(\theta_{j,k})_{j=1,k=1}^{J,p}$ se conocen como `conectores radiales` en $machine\ learning$ para las $J$ neuronas (cada uno de estos parametros aporta informacion de cada variables $x_{ij}$ respecto a la $j$-esima neurona), 
+
+* $\left(\phi_j(\cdot)\right)_{j=1}^{J}$ representan las funciones de activacion (la eleccion de $\phi$ dada arriba se conoce como `hiperbolica tangente` y mapea valores de $x_{ij}$ en la recta real al intervalo $(-1,1)$). 
+
+*NOTA: Este modelo tiene el proposito de realizar interpolacion en los datos, mas que el de un ejercicio de prediccion fuera de la region donde los* `datos de entrenamiento` *han sido observados.*
+
+# Implementacion
+
+La implementacion de este modelo require atender dos aspectos fundamentales para una buena estimacion de sus parametros:
+
+1. Identificabilidad
+
+2. No linealidad de parametros
+
+3. Aspectos de regularizacion *--es la primera vez que mencionamos este concepto en el curso--*
+
+La identificabilidad y no linealidad de los parametros en las dos capas del modelo se resuelven empleando el metodo bayesiano de inferencia. 
+
+### MAP
+
+Sin embargo, dado que el modelo es bastante complejo, la implementacion bayesiana descansa no en el calculo de la distribucion final de los parametros, per se, sino en el calculo de la moda de la distribucion final (lo comentamos en las primeras clases). Este procedimiento se conoce como **maximum a posteriori** (MAP). 
+
+### Regularizacion
+
+El aspecto de `regularizacion` lo revisaremos con mucho detalle en el contexto del problema de `seleccion de variables`. La idea de los procedimienots de `regularizacion` en general consiste en estimar el conjunto de parametros considerando la posibilidad de que "algunos" de ellos se colapsen a $0$ (esto obedece a simplificar el modelo reduciendo el numero de parametros estimados --aquellos que resulten ser distintos de $0$--).  
+
+En el contexto del modelo de hoy:
+
+* Cuando el numero de observaciones $n$ en la `muestra de entrenamiento` y el numero de `neuronas` (o `bases radiales`) crece, el numero efectivo de parametros crece significativamente.
+
+* No reconocer el problema anterior puede propiciar que el modelo **sobre-ajuste** los datos. Aunque deseamos hacer interpolacion, necesitamos balancear que el modelo no sea *sobre-ajustado* de manera que las *predicciones* sean mejores.
+
+* Un metodo de `regularizacion` que se puede emplear en este contexto consiste en realizar `inferencia pernalizada`, i.e. se asigna una distribucion inicial $\pi(\theta)$ para un parametro general tal que 
+\begin{equation}
+  \pi(\theta)=\alpha \delta_{0}(\theta)+(1-\alpha)\pi^{c}(\theta),
+\end{equation}
+donde $\pi^{c}(\theta)$ es una distribucion inicial *absolutamente continua* sobre el soporte de $\theta$.
+
+### Algoritmo
+
+El algoritmo de estimacion se describe siguiendo iterativamente los siguientes pasos:
+
+(a). Obteniendo modas condicionales de $\pi(\boldsymbol{\theta}|\text{datos},\boldsymbol{\sigma})$ a partir de la maximizacion de
+$$
+\pi(\boldsymbol{\theta}|\text{datos},\boldsymbol{\sigma}) 
+\propto
+lik(\boldsymbol{\theta}|\text{datos},\boldsymbol{\sigma})
+\pi(\boldsymbol{\theta}|\boldsymbol{\sigma}),
+$$
+donde $\boldsymbol{\theta}$ corresponde a los parametros de pesos y sesgos de la red neuronal, $\pi(\boldsymbol{\theta}|\boldsymbol{\sigma})$ es una distribucion inicial de `penalizacion` (o `shrinkage`), como la mencionada en `reguilarizacion`, con  $\boldsymbol{\sigma}$ definida como los componentes de varianza observacional $\sigma^{2}$ y las varianzas asociadas con la distribucion inicial de $\boldsymbol{\theta}$.
+
+(b). Actualizando $\boldsymbol{\sigma}$, condicional en $\text{datos}$, i.e. mediante la meximizacion de la distribucion marginal 
+$$
+p(\text{datos}|\boldsymbol{\sigma})
+\propto
+lik(\tilde{\boldsymbol{\theta}}|\text{datos},\boldsymbol{\sigma}),
+$$
+donde $\tilde{\boldsymbol{\theta}}$ denota el estimador MAP de $\boldsymbol{\theta}$ de la iteracion anterior.
+
+### Paquete en R
+
+El algoritmo que impolementa este modelo esta implementado en la libreria `brnn` de R.
+```
+install.packages("brnn")
+```
+
+## Ejemplo unidimensional
+
+Exploraremos la implementacion de este modelo con un ejemplo unidimensional incluido en `brnn`. Para esto, simulamos una `muestra de entrenamiento` a partir de la combinacion de tres modelo teoricos,
+$$
+f_1(x) = 4x,\\
+f_2(x) = 2-4x\\
+f_3(x) = 4x-4
+$$
+definido en tres regiones de $x$, 
+$$
+\mathcal{X}_1=(0,0.23),\\
+\mathcal{X}_1=(0.25,0.75),\\
+\mathcal{X}_1=(0.77,1).\\
+$$
+Estimamos el modelo anterior considerando $J=2$ neurnoas.
+```{r simulation}
+library(brnn)
+# Simulacion de datos
+x1=seq(0,0.23,length.out=25)
+y1=4*x1+rnorm(25,sd=0.1)
+x2=seq(0.25,0.75,length.out=50)
+y2=2-4*x2+rnorm(50,sd=0.1)
+x3=seq(0.77,1,length.out=25)
+y3=4*x3-4+rnorm(25,sd=0.1)
+x=c(x1,x2,x3)
+y=c(y1,y2,y3)
+plot(x,y,xlim=c(0,1),ylim=c(-1.5,1.5), main="Datos")
+
+# Estimacion del modelo con dos neuronas
+brnn_out <- brnn(y~x,neurons=2)
+
+# Resultado
+plot(x,y,xlim=c(0,1),ylim=c(-1.5,1.5), main="Ajuste")
+lines(x,predict(brnn_out),col="blue",lty=2)
+legend("topright",legend="Modelo ajustado",col="blue",lty=2,bty="n")
+
+# Resumen
+summary(brnn_out)
+brnn_out
+```
+
+
+## Ejemplo multidimensional
+
+En este caso consideraremos datos con dos covariables de estimulos, $(x_1,x_2)$. Estos datos han sido analizados por Paciorek and Schervish (2004). Implementamos el modelo con $J=10$ neuronas.
+
+```{r example3}
+###############################################################
+# Datos
+data(twoinput)
+head(twoinput)
+plot(twoinput)
+
+# Implementacion
+brnn_out2 <- brnn(y~x1+x2,data=twoinput,neurons=10)
+
+# Prediccion (interpolacion)
+f <- function(x1,x2) predict(brnn_out2,cbind(x1,x2))
+
+x1 <- seq(min(twoinput$x1),max(twoinput$x1),length.out=50)
+x2 <- seq(min(twoinput$x2),max(twoinput$x2),length.out=50)
+z <- outer(x1,x2,f)
+
+transformation_matrix  <- persp(x1, x2, z, main="Interpolacion",
+                                sub=expression(y==italic(g)~(bold(x))+e),
+                                col="lightgreen",theta=30, phi=20,r=50,
+                                d=0.1,expand=0.5,ltheta=90, lphi=180,
+                                shade=0.75, ticktype="detailed",nticks=5)
+
+points(trans3d(twoinput$x1,twoinput$x2, f(twoinput$x1,twoinput$x2),
+               transformation_matrix), col = "red")
+```
+
+### Tarea
+
+Relicen ejercicios considerando:
+
+1. Considerando datos simulados para $(x_1,x_2)$ que ustedes creen con una funcion teorica $f(x_1,x_2)$ arbitraria.
+
+2. Considerando diferentes tamanos $J$ de bases radiales.

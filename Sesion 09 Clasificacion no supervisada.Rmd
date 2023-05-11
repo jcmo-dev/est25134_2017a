@@ -1,0 +1,346 @@
+---
+title: "Sesion 09: Clasificacion no supervisada"
+author: "Juan Carlos Martinez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduccion
+
+El agrupamiento de datos (a.k.a. *clasificacion no supervisada* o *clustering*) nos permite comprender mejor cómo una muestra puede estar compuesta de subgrupos distintos dados un conjunto de variables, _cuando la definición de los grupos y su asociación con los datos no ha sido develada con anterioridad_. 
+
+Si bien muchas introducciones al análisis de clúster suelen revisar una aplicación simple que utiliza variables continuas, los datos de agrupación de tipos mixtos (por ejemplo, continuos, ordinales y nominales) son a menudo de interés. A continuación se presenta una visión general de una aproximación a la agrupación de datos de tipos mixtos usando la distancia de Gower, la partición alrededor de los medoides y el ancho de la silueta.
+
+Paquetes que utilizaremos en la sesión:
+```
+install.packages("mclust")
+install.packages("kknn")
+install.packages("caret")
+```
+
+`dendroCol` es una funcion para colorear grupos:
+```{r dendroCol}
+dendroCol <- function(dend=dend, keys=keys, 
+                      xPar="edgePar", bgr="red", fgr="blue",
+                      pch=20, lwd=1, ...){
+  if(is.leaf(dend)){
+    myattr <- attributes(dend)
+    if(length(which(keys==myattr$label))==1){
+      attr(dend, xPar) <- c(myattr$edgePar, 
+                            list(lab.col=fgr, col=fgr,
+                                 pch=pch, lwd=lwd))
+      # attr(dend, xPar) <- c(attr$edgePar, list(lab.col=fgr, col=fgr, pch=pch))
+    }else{
+      attr(dend, xPar) <- c(myattr$edgePar, list(lab.col=bgr, col=bgr, pch=pch, lwd=lwd))
+    }
+    }
+  return(dend)
+}
+```
+
+## I. Basados en distancias
+
+### I-a) K-Means
+
+**Pasos:**
+
+1. Se elige un conjunto inicial de $K$ centroides, $c_1,\ldots,c_K$ (esto puede ser aleatorio o cualquier otro medio)
+
+2. Para cada punto de datos, la asignación corresponde al centroide más cercano de acuerdo con la función de distancia dada:
+$$
+x_i \rightarrow C^{*}
+$$
+donde 
+$$
+C^{*} = \arg\max_{k} \{d(x,c_k):k=1,\ldots,K\}.
+$$
+3. Se ajusta la posición del del centroide como la media de todos sus puntos de datos de miembro asignados, i.e.
+$$
+\tilde{c}_k=1/(n_k+1)\left( \sum_{i\in C_k} x_i +c_k\right)
+$$
+Vuelva a (2) hasta que la membresía no cambie y la posición del centroide sea estable.
+
+4. Salida de los centroides.
+
+Observe que en `K-Means`, requerimos la definición de:
++ La función de distancia
++ La función media
++ El número de centroides $K$
+
+**Nota:** `K-Means` es $O(nrk)$, donde $n$ es el número de puntos, $r$ es el número de rondas y $k$ el número de centroides.
+
+El resultado de cada ronda es indeterminista. Las prácticas habituales consiste en ejecutar varias rondas de `K-Means` y elegir el resultado de la mejor ronda. La mejor ronda es aquella que minimiza la distancia media de cada punto a su centroide asignado.
+
+Veamos un ejemplo con los datos `iris` de plantas que iniciamos a estudiar en la sesión de _clasificación supervisda_.
+
+```{r Ia_1aronda}
+library(stats)
+set.seed(101)
+km <- kmeans(iris[,1:4], 3)
+plot(iris[,1], iris[,2], col=km$cluster)
+points(km$centers[,c(1,2)], col=1:3, pch=19, cex=2)
+table(km$cluster, iris$Species)
+```
+
+```{r Ia_2aronda}
+set.seed(900)
+km <- kmeans(iris[,1:4], 3)
+plot(iris[,1], iris[,2], col=km$cluster)
+points(km$centers[,c(1,2)], col=1:3, pch=19, cex=2)
+table(predicted=km$cluster, true=iris$Species)
+```
+
+### I-b) *Clustering* jerárquico
+
+En este enfoque, se comparan todos los pares de puntos de datos y se agrupan de acuerdo al que tenga la distancia más cercana.
+
+**Pasos:**
+
+1. Calculamos la distancia entre cada par de puntos,
+$$
+\{d(x_i,x_j):i,j=1,\ldots,n \text{ con }i\neq j\}
+$$
+**Notas:**
+
+  a) La distancia entre el punto es sólo el uso de la función de distancia.
+
+  b) El cálculo de la distancia entre el punto $x$ al grupo $C$ puede implicar muchas opciones (como la distancia min / max / avg entre el punto $x$ y los puntos en el grupo $C$).
+
+  c) El cálculo de la distancia entre $C_k$ y $C_l$ se puede calcular como la distancia de todos los pares de puntos (uno-a-uno) y, a continuación, eligiendo min / max / avg de estos pares.
+
+2. Agrupamos los dos puntos más cercanos en un grupo. Volvemos a (1) hasta que sólo queda un grupo grande.
+
+En la agrupación jerárquica, la complejidad computacional es $O(n^2)$, la salida será un árbol de etapas de agrupación. 
+
+**Nota:** 
+No se requiere que especifiquemos $K$ o una función media. Puesto que su alta complejidad, la agrupación jerárquica se utiliza típicamente cuando el número de puntos no es demasiado alto.
+
+```{r, fig.width = 12}
+m <- matrix(1:15,5,3)
+dist(m) 
+# Calcula la distancia entre filas de m (ya que hay 3 columnas, es la distancia euclidiana entre puntos tridimensionales)
+dist(m,method="manhattan") 
+# Usando la métrica de manhattan
+set.seed(101)
+sampleiris <- iris[sample(1:150, 40),] 
+# Obtener muestras del conjunto de datos del iris
+# Cada observación tiene 4 variables, es decir, se interpretan como puntos 4-D
+distance   <- dist(sampleiris[,-5], method="euclidean") 
+cluster    <- hclust(distance, method="average")
+plot(cluster, hang=-1, label=sampleiris$Species)
+```
+
+
+Pesentacion alternativa de la inforacion:
+
+```{r, fig.width = 12, fig.height=12}
+plot(as.dendrogram(cluster), edgePar=list(col="darkgreen", lwd=2), horiz=T) 
+str(as.dendrogram(cluster))
+# Como texto
+cluster$labels[cluster$order] 
+# Nieveles ene l arbol de clasifiacion
+```
+
+Truncamos ahora el numero de `clusters`:
+
+```{r, fig.width = 14, fig.height = 7}
+par(mfrow=c(1,2))
+group.3 <- cutree(cluster, k = 3)
+# 3 clusters
+table(group.3, sampleiris$Species) 
+# comparacion con las clases conocidas
+plot(sampleiris[,c(1,2)], col=group.3, pch=19, cex=2.5, main="3 clusters")
+points(sampleiris[,c(1,2)], col=sampleiris$Species, pch=19, cex=1)
+group.6 <- cutree(cluster, k = 6)  
+# mas clusters
+table(group.6, sampleiris$Species)
+plot(sampleiris[,c(1,2)], col=group.6, pch=19, cex=2.5, main="6 clusters")
+points(sampleiris[,c(1,2)], col=sampleiris$Species, pch=19, cex=1) 
+# clases verdaderas marcadas con circulos perqueños 
+par(mfrow=c(1,1))
+```
+
+Trabajando de nuevo con el arcbol original:
+
+```{r, fig.width = 12, fig.height = 10}
+plot(cluster, hang=-1, label=sampleiris$Species)
+abline(h=0.9,lty=3,col="red")
+height.0.9 <- cutree(cluster, h = 0.9)
+table(height.0.9, sampleiris$Species) 
+# comparación con las clases verdaderas
+plot(sampleiris[,c(1,2)], col=height.0.9, pch=19, cex=2.5, main="3 clusters")
+points(sampleiris[,c(1,2)], col=sampleiris$Species, pch=19, cex=1)
+```
+
+#### Caso, desconocimiento del numero de clusters $K$
+
+```{r}
+# Disimilaridad con la distancia euclideana
+dist.iris <- dist(iris, method="euclidean")
+# Clustering jerarquico usando la matriz de disimilaridades 
+h.iris <- hclust(dist.iris, method="complete") 
+h.iris
+head(h.iris$merge, n=10)
+```
+
+El menos enfrente del número de unidad indica que se trata de una sola observación que se está fusionando; mientras que los números por sí solos indican el paso en el cual se construyeron los grupos considerados.
+
+```{r}
+plot(h.iris)
+```
+
+**¿Cuál es el número apropiado de grupos?** 
+
+Una opción común es cortar el árbol por la mayor diferencia de alturas entre dos nodos. Los valores de altura están contenidos en la salida de la función hclust:
+
+```{r}
+h.iris.heights <- h.iris$height # height values
+h.iris.heights[1:10]
+subs <- round(h.iris.heights - c(0,h.iris.heights[-length(h.iris.heights)]), 3) # subtract next height
+which.max(subs)
+```
+
+Puesto que el salto más grande estaba en el último paso del proceso de fusión, sugiere dos grupos (aquí, sabemos que es tres).
+
+### I-c) $k$-vecino
+
+Sea $s$ muestra de entrenamiento e $I$ el conjunto de observaciones ya clasificadas.
+
+**Pasos:**
+
+1. Calculamos la distancia entre $s$ y cada punto en $I$
+
+2. Ordenar las distancias en orden numérico creciente y elegir los primeros $K$ elementos
+
+3. Calculamos y devolvemos la clase más frecuente en los $K$ vecinos más próximos, opcionalmente ponderando la clase asociada a cada punto en $s$
+
+Utilizamos el paquete `kknn`, el cual emplea la siguiente metrica: 
+$$
+d(x,y)=\Big( \sum_i |x_i - y_i|^p \Big)^{1/p}
+$$
+es la distancia entre los vectores $x = (x_1, x_2\ldots x_n)$ y $y = (y_1, y_2\ldots y_n)$.
+
+Observaciones:
+
+* Cuando $p=2$ tenemos el caso particular de la distancia euclidiana, y
+
+* cuando $p=1$ tenemos la distancia de Manhattan.
+
+```{r, warning=FALSE}
+library(kknn)
+library(caret)
+
+inTrain   <- createDataPartition(y=iris$Species, p=0.75, list=FALSE) 
+known.set <- iris[inTrain,]
+test.set  <- iris[-inTrain,]
+
+iris.kknn <- kknn(Species ~ ., known.set, test.set[,-5], 
+                  distance = 1, k = 7, scale = TRUE,
+                  kernel = "triangular") 
+
+iris.kknn$prob[10:20,]
+iris.kknn$fitted.values
+
+table(test.set$Species, fitted(iris.kknn))
+pairs(test.set[,-5], 
+      pch = as.character(as.numeric(test.set$Species)), 
+      col = c("green3", "red")[(test.set$Species != iris.kknn)+1])
+```
+
+**Validacion cruzada**
+
+```{r, collapse=TRUE}
+set.seed(101)
+iris.cv <- cv.kknn(Species ~ ., iris, kcv=10, kernel="triangular")
+iris.cv
+# Cross-validation
+iris.cv2 <- train.kknn(Species ~ ., iris, nn=10, kernel="triangular")
+plot(iris.cv2, type="b")
+```
+
+### I-d) *Density-based Cluster*
+
+La clasificacion en esta tipo de asignaciones de datos se obtiene "sobre-imponiendo" una `densidad` de probabilidades. 
+
+Para esto, se definen dos parametros:
+
+a. $r$ (o `eps`) - radio de la densidad al rededor de cada punto, y 
+
+b. `minpts` - numero de vecinos dentro del radio `eps`
+
+El algoritmo de asignacion, conocido como `DBscan` se deifne de la siguiente forma:
+
+1. Paso `scan` -  para cada punto $x_i$ se calcula la distancia con todos los puntos restantes. Se asigna una `clase` nueva a los puntos cuya distancia sea menos que `eps`.
+
+2. Paso `scan 2` - para cada punto, se etiqueta como un nucleo si el conteo de su vecindad es mayor que `minpts`
+
+3. Paso `scan 3` - para cada punto, si no ha sido asignado a una `clase`, se crea una `clase` nueva y se define el `nucleo` como el punto mismo
+
+_A diferencia de los algoritmos de asignacion anteriores, este algoritmo admite la posibilidad de identificas clases singulares (formadas por un solo dato). Estas clases son interpretadas como `outliers`._
+
+El algoritmo que implementa esta asignacion esta contenido en el paquete `pfc`:
+
+```
+install.packages("pfc")
+```
+
+Los resultados:
+
+```
+library(fpc)
+set.seed(121)
+sampleiris <- iris[sample(1:150, 40),] 
+# definimos `eps`  y `MinPts`
+cluster <- dbscan(sampleiris[,-5], eps=0.6, MinPts=4)
+# identificamos puntos outliers (negro)
+# identificamos `nucleos` (triangulos)
+# identificamos puntos frontera (circulos)
+plot(cluster, sampleiris)
+plot(cluster, sampleiris[,c(1,4)])
+# `clase` 0 son datos no clasificados en una clase
+# o `clases singulares`
+table(cluster$cluster, sampleiris$Species)
+```
+
+## Anexo: Escalamiento de datos
+
+_Los algoritmos descritos en esta sesion funcionan mas eficientemente cuando los datos (escalares, desde luego) son `estandarizados por renglon` en media y varianza._
+
+Pensemos que tenemos un conjunto de datos $y$ que deseamos clasificar. Sera conveniente reescalarlos de la siguiente forma:
+
+```{r}
+# Sample data matrix.
+set.seed(101)
+y <- matrix(rnorm(100,20,5), 20, 5, 
+            dimnames=list(paste0("g", 1:20), paste0("t", 1:5))) 
+head(y)
+apply(y,2,mean)
+apply(y,2,sd)
+```
+
+El escalamiento se obtiene con la función `scale`, la cual regresa los datos estandarizados en media y varianza.
+
+Para escalar una matriz $m$ (o `m`) por renglones empleamos el codigo 
+```
+m.scaled <- t(scale(t(m)))
+```
+
+```{r}
+apply(scale(y,scale=FALSE),2,mean)
+# Escalamiento en medias
+apply(scale(y,scale=FALSE),2,sd)
+yscaled.cols <- scale(y)     
+# escalamiento por columnas
+yscaled.cols
+apply(yscaled.cols, 2, mean) 
+apply(yscaled.cols, 2, sd)
+yscaled.rows <- t(scale(t(y)))
+# escalamiento por renglones
+yscaled.rows
+apply(yscaled.rows, 1, mean)
+apply(yscaled.rows, 1, sd)
+```

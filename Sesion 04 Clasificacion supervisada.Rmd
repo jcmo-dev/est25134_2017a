@@ -1,0 +1,422 @@
+---
+title: "S04 - Clasificacion supervisada"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+library(ggplot2)
+library(dplyr)
+
+```
+
+# Clasificacion supervizada
+
+Iniciamos con el caso donde tenemos un conjunto de variables $\{y_i\}_{i=1}^{n}$, donde 
+$$
+y_i = 
+\begin{cases}
+1 & \text{, exito,}\\
+0 & \text{, fracaso,}
+\end{cases}
+$$
+i.e. $y_i \in \{0,1\}$ para todo individuo $i=1,\ldots,n$. Consideramos cada valor de $y_i$ como un atributo del individuo $i$.
+
+**Es importante considerar que en la clase de modelos que estudiaremos, los atributos son mutuamente excluyentes, i.e. cada individio podra tener asociado solo uno de ellos.** 
+
+Sin embargo, debido al procedimiento de estimacion, al final del dia contaremos con una medida de incertidumbre para tal asociacion, manifestada como una medida de probabilidad,
+\begin{equation}
+\mathbb{P}(y_i=1) \ \text{ y } \ \mathbb{P}(y_i=0).
+\end{equation}
+Lo que entonces suponemos es que cada $y_i$ tiene asociada una distribucion $Be(y_i|\theta),$ donde $0<\theta<1$ es justamente $\mathbb{P}(y_i=1)$.
+
+Sin hacer distincion alguna entre individuos, para una `muestra de entrenamiento` $\boldsymbol{y}=\{y_1,\ldots,y_n\}$ podemos encontrar que el EMV para $\theta$ seria
+\begin{equation}
+\hat{\theta} = \frac{\#\{y_i:y_i=1\}}{n}.
+\end{equation}
+El estimador de $\theta$ se obtiene a partir de la funcion de verosimilitud asociada al modelo,
+\begin{eqnarray}
+lik(\theta|\boldsymbol{y}) 
+  & = & 
+  \prod_{i:y_i=1}\theta \prod_{i:y_i=0}(1-\theta)
+  \nonumber \\
+  & = & 
+  \theta^{\#\{y_i=1\}} (1-\theta)^{n-\#\{y_i=1\}}.
+  \nonumber \\
+\end{eqnarray}
+
+Por consiguiente, cualquier observacion futura $y^f$ no observada aun tendria asociada la siguiente prediccion,
+\begin{equation}
+y^f =
+\begin{cases}
+1 & \text{, con probabilidad } \hat{\theta} \\
+0 & \text{, con probabilidad } (1-\hat{\theta}).
+\end{cases}
+\end{equation}
+*Esta prediccion es la misma para cada observacion futura, sin distincion.*
+
+## Efectos de estimulos
+
+Con el proposito de tener una lectura mas educada de la asignacion de atributos entre los individuos, podemos considerar la inclusion de `variables de estimulos` en cada uno de ellos, $x_i=(x_{i1},\ldots,x_{ip})$. 
+
+**La idea de incluir estas variables de estimulos, es la de poder tener una lectura particular de la asignacion de atributos en cada individuo. Se piensa, que estos estimulos pueden asociarse con probabilidades particulares en cada uno de los individos.** Es decir,
+ahora los atributos individuales tendrian la siguiente distribucion,
+\begin{equation}
+y_i = 
+\begin{cases}
+1 & \text{, con probabilidad } \theta_i\\
+0 & \text{, con probabilidad } (1-\theta_i),\\
+\end{cases}
+\end{equation}
+donde cada $\theta_i$ es funcion de $x_i$, los estimulos particulares, i.e.
+\begin{equation}
+\theta_i = g(x_i).
+\end{equation}
+
+Pero, para preservar el caracter inductivo del `aprendizaje estadistico`, es necesario definir aspectos comunes entre las funciones $g(x_1),\ldots,g(x_n)$ en la `muestra de entrenamiento`. 
+
+Una forma general de hacer esto, consiste en suponer que la funcion $g$ es estructuralmente la misma entre los individuos de la `muestra de entrenamiento` (y la `muestra de prueba`, desde luego). Y que esta funcion tiene como argumento no directamente a los `estimulos`, sino a una proyeccion de estos estimulos a la recta real, $proj(x_i)\in\mathbb{R}$, i.e.
+\begin{equation}
+g(x_i) = h(proj(x_i)),
+\end{equation}
+donde $proj(x_i)$ depende de parametros $\alpha$, comunes entre todos los individuos. 
+
+### a) Proyector lineal
+
+Pensemos por ejemplo que el proyector es lineal euclidiado, i.e.
+$$
+proj(x_i) 
+  = \alpha_1 x_{i1} + \cdots + \alpha_p x_{ip},
+$$
+para todo $i=1,\ldots,n$.
+
+### b) Conector
+
+Para que $h$ sea una funcion que separe adecuadamente los dos eventos sobre $y_i$ necesitamos restringirla a que sea una transformacion monotona creciente (o decreciente, igualmente). Dentro de esta clase de funciones, contamos con la clase de todas las distribuciones de probabilidad continuas con soporte en la recta real positiva. 
+
+Casos particulares que usualmente empleamos en la practica corresponden a:
+
+* Distribucion logistica estandar (modelo logit)
+
+* Distribucion normal estandar (modelo probit)
+
+* Distribucion $t$-Student estandar (modelo tobit)
+
+En estos casos, la funcion $h$ contribuye con la forma estructural de la separacion de los atributos, y la parametrizacion del modelo descansa sobre el tipo de proyeccion y parametros involucrados.
+
+## Modelo probit (implementacion)
+
+Consideremos el caso del modelo **probit** con una proyeccion lineal. La verosimilitud para este modelo esta dada por,
+\begin{equation}
+lik(\alpha|\boldsymbol{y},\boldsymbol{X})
+ = \prod_{i:y_i=1} \Phi(proj(x_i)) \prod_{i:y_i=0} (1-\Phi(proj(x_i))),
+\end{equation}
+donde $\Phi(\cdot)$ es la funcion de distribucion normal estandar.
+
+**Como aprender acerca de los parametros **$\alpha = (\alpha_1,\ldots,\alpha_p)$**?**
+
+Hacerlo directamente es complicado, por las integrales involucradas dentro de la funcion de verosimilitud. Sin embargo, es relativamente sencillo implementar el `procedimiento de aprendizaje estadistico` empleando *variables latentes*.
+
+## I. Inclusion de variables latentes
+
+Las *variables latentes* se definen como variables no observables dentro del modelo que estan asociadas a uno o a un conjunto de observaciones y para las cuales el modelo mismo contempla una medida de probabilidad particular. Las *variables latentes* no son parametros per se, pues:
+
+* tienen asociada una medida de probabilidad,
+
+*  son locales para cada observacion o individuo.
+
+**Encontraremos variables latentes recurrentemente a lo largo del curso...**
+
+En el contexto del modelo que estamos estudiando, consideraremos como *variable latente* al evento que ubique la region donde la proyeccion de $x_i$ tome valor en la recta real, dividiendo dos regiones 
+$$
+(-\infty,0) \ \text{ y } \ (0,\infty),
+$$
+(los cuales estan asociados con la particion inducida por el umbral que comentamos en la clase pasada).
+
+Definimos asi, el atributo del individuo $i$ como
+\begin{equation}
+y_i =
+\begin{cases}
+0 & \text{, si } z_i \leq 0 \\
+1 & \text{, si } z_i > 0,
+\end{cases}
+\end{equation}
+donde 
+\begin{eqnarray}
+z_i 
+  & \sim &
+  N\left(z|proj(x_i),1\right)
+  \nonumber \\
+  & = &
+  N\left(z|\alpha_1x_{i1}+\cdots+\alpha_p x_{ip},1\right).
+  \nonumber
+\end{eqnarray}
+
+**Tarea:** Encuentren que integrando $\mathbb{I}(z_i>0)$ respecto a la distribucion de $z_i$ recuperamos el modelo original.
+
+### II. *Gibbs sampler*
+
+#### Distribucion inicial
+
+El tratamiento de variables latentes es mas natural bajo el paradigma bayesiano de aprendizaje. Recordemos que los parametros involucrados en el modelo son los coeficientes de proyeccion, $\alpha$. En este caso, asignamos una distribucion inicial sobre ellos dada por,
+\begin{equation}
+\pi(\alpha) = N_p\left(\alpha|m_a,\Sigma_a\right),
+\end{equation}
+para algun $m_a$ y $\Sigma_a$.
+
+#### Algoritmo
+
+El algoritmo de Gibbs se obtiene de manera relativamente simple, observando:
+
+* Condicional en $\alpha^{(k)}$, la distribucion final de la variable latente $\mathbb{I}(z > 0)$ es el producto de $n$ distribuciones $Bernoulli$ con probabilidades de exito dadas por 
+$$
+q=Pr\left(z_i>0|x_i'\alpha^{(k)},1\right).
+$$
+
+* Condicional en $(z_i^{(k)})_{i=1}^{n}$, la distribucion final para $\alpha$ se obtiene como la de un modelo de regresion donde 
+$$
+z^{(k)} \sim N_n\left(z^{(k)}|X'\alpha,\sigma^2\mathbb{I}_n\right).
+$$
+
+A continuacion vemos una implementacion en R.
+
+#### Implementacion en R
+
+Presentamos un algoritmo autonomo que obtiene muestras de la distribucion final de los parametros. El paquete que emplearemos es `mvtnorm` en R para evaluar la distribucion normal.
+```
+install.packages('mvtnorm')
+```
+
+```{r gibbs.probit, echo=TRUE}
+gibbs.probit <- function(Y, X, m0, S0, b0, z0, G){
+  # Gibbs sampler para el modelo probit
+  #
+  # Inputs:
+  # Y - Arreglo (n x 1) de atributos 
+  # X - Arreglo (n x p) de estimulos 
+  # m0 - Arreglo (p x 1) con la media incial para $\alpha$
+  # S0 - Arreglo (p x p) con la varianza incial para $\alpha$
+  # b0 - Arreglo (p x 1) con el valor incial para $\alpha$
+  # z0 - Arreglo (n x 1) con valores iniciales para $z$
+  # G - Longitud de la cadena de Markov
+  
+  require("mvtnorm")
+  
+  # Dimensiones
+  n <- nrow(X)
+  p <- ncol(X)
+  
+  # Repositorios
+  b.sim <- matrix(NA, nrow=G, ncol=p)   
+  z.sim <- matrix(NA, nrow=G, ncol=n)
+  
+  # Temporales
+  beta <- b0
+  z <- z0
+
+  # Gibbs sampler
+  gt <- 1
+  for(gt in 1:G){
+    # Proyector lineal
+    eta <- X%*%beta
+
+    #	Muestreo de la distribucion truncada para Z 
+    #	de las distribuciones condicionales completas
+    z[Y==0] <- qnorm(runif(sum(1-Y), 0,pnorm(0,eta[Y==0],1)), eta[Y==0],1)
+    z[Y==1] <- qnorm(runif(sum(Y), pnorm(0,eta[Y==1],1),1), eta[Y==1],1)
+
+    #	Muestreo de la distribucion final completa para beta
+    Vbeta <- solve(S0 + t(X)%*%X)
+    Ebeta <- Vbeta%*%(S0%*%m0 + t(X)%*%t(z))
+    beta <- c(rmvnorm(1,Ebeta,Vbeta))
+    
+    # Repositorios
+    b.sim[gt, ] <- beta
+    z.sim[gt, ] <- z
+  }
+  # Fin: Gibbs sampler
+  output <- list(b.sim,z.sim)
+  return(output)
+}
+```
+
+# Ejemplo 1: Datos simulados separados
+
+La primera ilustracion consiste en analizar un conjunto de `3000` datos simulados que incluyen una variable de `atributos` dicotomica $Y\in\{0,1\}$ y dos variables de estimulos $(X_1,X_2)$, ambas definidas en el intervalo $[-1,1]$.
+
+Los datos estan disponibles en el repositorio del curso.
+
+```{r ex1_sim, include=FALSE}
+githubURL <- "https://github.com/jcmartinezovando/est25134_2017a/raw/master/datos/EST25134_ClasifSup.RData"
+
+# En Windows
+load(url(githubURL))
+ls()
+Y <- datos$Y
+X <- datos[,c("x1","x2")]
+```
+
+Los estimulos y atributos estan relacionados de manera separable, como se muestra en la siguiente grafica *-noten que la separacion no es lineal-*.
+
+```{r ex1_data}
+table(Y)
+plot(X$x1, X$x2, col=Y+3)
+```
+
+### i) Aprendizaje frecuentista
+
+* Aun cuando la separacion de los datos es notoriamente no lineal, inicaremos relizando un ejercicio de separacion (i.e. **clasificacion supervisada**) con base en un proyector lineal
+ 
+* De igual forma, empezaremos relizando el aprendizaje del modelo basado en *maxima verosimilutd*.
+
+Se tienen los siguientes resultados de aprendizaje:
+
+```{r ex1_mle}
+#		Analisis frecuentista (modelo saturado)
+X <- cbind(X$x1,X$x2)
+ex1_mle <- glm(Y ~ -1+X, family=binomial("probit"))
+summary(ex1_mle)
+```
+
+Noten que los coeficientes de ambos estimadores para $X_1$ y $X_2$ son significativamente distintos de $0$.
+
+**La siguiente sesion revisaremos metodos robustos para evaluar el ajuste (y prediccion) de esta clase de modelos.**
+
+### ii) Aprendizaje bayesiano
+
+Seguimos ahora relizando un ejercicio de aprendizaje bayesiano. Fijamos la semilla (`seed`) en $33$ para efectos de replicabilidad de resultados.
+
+El aprendizaje bayesiano lo realizamos con base en el algoritmo autonomo de Gibbs (`gibbs.probit`) que presentamos antes. Fijamos:
+
+* Longitud de la cadena de Markov en 10 mil iteraciones
+
+* Centramos la distribucion inicial de $\alpha$ en los EMV (*Empirical Bayes (EB)*)
+
+* Asignamos bastante dispersion a la distribucion inicial, con varianzas iguales a $30$ unidades
+
+* Inicialmente suponemos que los coeficientes $\alpha_1$ y $\alpha_2$ son mutuamente independientes (su dependencia en la distribucion final dependera de la estructura de correlacion entre $X_1$ y $X_2$ estimulos).
+
+* Los valores iniciales de la cadena de Markov los fijamos en $0$ para las `variables latentes` $(z_i)$ y en el EMV para los `parametros` $(\alpha_1,\alpha_2)$
+
+**Ejercicio:** Prueben que resultados encontraran modificando las especificaciones anteriores.
+
+```{r ex1_gibbs}
+set.seed(33)
+
+# Simulaciones
+G <- 10000
+
+# Distribucion inicial
+m0 <- ex1_mle$coef
+S0 <- diag(30, nrow=2, ncol=2)
+
+# Valores inciales
+N <- nrow(datos)
+b0 <- ex1_mle$coef
+z0 <- matrix(0, nrow=1, ncol=N)
+
+# Gibbs sampler
+ex1_gibbs <- gibbs.probit(Y, X, m0, S0, b0, z0, G)
+```
+
+La distribucion final de los parametros $(\alpha_1,\alpha_2)$ del modelo derivada del procedimiento de simulacion arroja los siguientes resultados.
+
+```{r ex1_resumen}
+# Kernel Density Plot
+b.x1 <- density(ex1_gibbs[[1]][,1])
+plot(b.x1, ylab = "Densidad", xlab = "b.x1", main="")
+
+b.x2 <- density(ex1_gibbs[[1]][,2])
+plot(b.x2, ylab = "Densidad", xlab = "b.x2", main="")
+
+# Dispersion
+plot(ex1_gibbs[[1]], ylab = "b.x1", xlab = "b.x2", main="")
+```
+
+* Observamos que marginalmente las distribuciones de $\alpha_1$ y  $\alpha_2$ estan aproximadamente centradas en los EMV. Este resultado es ajeno a la especificacion de la distribucion inicial y de los valores iniciales de la cadena en el algoritmo. *Los invito a revisar esto.*  
+
+* A diferencia del aprendizaje frecuentista, en el bayesiano tenemos la posibilidad de modular que tan admisible son los otros diferentes valores de los parametros. Esto resultara ser fundamental no tanto desde el punto de vista de `aprendizaje estadistico`, sino en subsecuentes ejercicios de `prediccion`.
+
+* Tambien, a diferencia del enfoque frecuentista, en el bayesiano podemos diagnosticar la identificabilidad de los parametros. En este caso, observamos que existe una estructura de dependencia fuerte entre $\alpha_1$ y $\alpha_2$. *Adelante en el curso veremos formas de corregir este comportamiento.*
+
+Cuando se implementa un MCMC hay varios aspectos que controlar para garantizar los mejores resultados posibles. Algunos de estos aspectos pueden monitorearse graficamente empleando las siguentes graficas. Observamos:
+
+* Fuerte dependencia de los `paths` de simulacion
+
+* Comportamiento ciclico en sus paths
+
+* Convergencia ergodica
+
+Los dos aspectos negativos pueden corregirse empleando metodos ya conocidos en la actualidad. 
+
+```{r ex1_diagnostico}
+# ACF
+acf(ex1_gibbs[[1]])
+
+# Traza
+plot(ex1_gibbs[[1]][,1], ylab="b.x1", xlab="iteracion",main="")
+plot(ex1_gibbs[[1]][,2], ylab="b.x2", xlab="iteracion",main="")
+```
+
++ Los ejercicios practicos importantes de este curso los realizaremos con JGAS (Jet another Gibbs Sampler), que esta implementado en R, el cual incluye varias de estas erramientas de correccion.
+
+# Tarea
+
+Adicional a la `tarea` mencionada arriba, consideren:
+
+* Modificar la especificacion de la distribucion inicial en el algoritmo.
+
+* En otro ejercicio, modificar el valor inicial de la cadena de Markov.
+
+En ambos casos, prueben los resultados que encontrarian considerando tres longitudes de la cadena de Markov:
+
+a. 1 mil
+
+b. 30 mil
+
+c 100 mil
+
+(Descuiden, el algoritmo no toma tanto tiempo en ejecucion).
+
+# Referencias
+
+* **Hastie et al** - Secciones 4.2, 4.3, 4.4
+
+* **James et al** - Secciones 4.1-4.3
+
+* **Alpaydin** - Secciones 10.1, 10.7, 10.8
+
+* **Barber** - Seccion 16.1
+
+* **Bishop** - Capitulo 4
+
+
+# Adicional
+
+Adicionalmente, empiecen a explorar los datos `EST25134_Pregnancy.Rdata` del repositorio del curso. Estos son datos reales sobre embarazos prematuros en mujeres de los EEUU. 
+Exploraremos con detalle en la siguiente sesion estos datos, incluyendo tanto para esos como para los datos simulados de hoy, especificaciones mas felxibles del `proyector` de los estimulos.
+
+```{r ex2_data}
+#		Datos
+rm(list=ls())
+githubURL <- "https://github.com/jcmartinezovando/est25134_2017a/raw/master/datos/SSVS_Probit_Data.Rdata"
+
+load(url(githubURL))
+
+#	Inputs
+# x = dde 	# dosis
+# Y = 0/1 	# variable indicadora sobre embarazo prematuro
+# z1-z5 	  # covariables (variables confundidas)
+
+# 	Normalizacion de covariables
+dde$x<- (dde$x - mean(dde$x))/sqrt(var(dde$x)) 
+table(dde$y)
+plot(dde$x,dde$z2,col=dde$y+3)
+
+Y <- dde$y
+X <- cbind(dde$x,dde$z2)
+```
+

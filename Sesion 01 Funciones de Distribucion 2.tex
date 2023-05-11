@@ -1,0 +1,120 @@
+%
+%
+\documentclass[11pt]{article}
+
+%   --------------------------------
+%               Packages
+%   --------------------------------
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[spanish]{babel}
+\usepackage[sans]{dsfont}
+\usepackage[left=3cm,top=3cm,bottom=3cm,right=3cm]{geometry}
+\usepackage[pdftex]{graphicx}
+\usepackage[scaled=0.92]{helvet}
+\usepackage{color}
+\usepackage[usenames,dvipsnames,svgnames,table]{xcolor}
+\usepackage[colorlinks=true,
+            linkcolor=red,
+            urlcolor=blue,
+            citecolor=gray]{hyperref}
+\usepackage[latin1]{inputenc}
+\usepackage{listings}
+\usepackage{longtable}
+\usepackage{lscape}
+\usepackage{mathrsfs}
+\usepackage[round]{natbib}
+\usepackage{subfigure}
+\usepackage{supertabular}
+\usepackage{syntonly}
+\usepackage{tabularx}
+\usepackage{titlesec}
+\usepackage{url}
+\usepackage{verbatim}
+
+%   --------------------------------
+%               Directories
+%   --------------------------------
+\graphicspath{{../figures/}}
+\DeclareGraphicsExtensions{.pdf,.jpeg,.png,.jpg}
+
+%%   --------------------------------
+%%               Theorems
+%%   --------------------------------
+%\theoremstyle{plain}
+%\theoremstyle{definition}
+%\floatname{algorithm}{Algorithm}
+%\newtheorem{axiom}{Axiom}[section]
+%\newtheorem{condition}{Condition}[section]
+%\newtheorem{corollary}{Corollary}[section]
+%\newtheorem{definition}{Definition}[section]
+%\numberwithin{equation}{section}
+%\newtheorem{hypothesis}{Hypothesis}
+%\newtheorem{lemma}{Lemma}[section]
+%\newtheorem{property}{Property}[section]
+%\newtheorem{proposition}{Proposition}[section]
+%\newtheorem{theorem}{Theorem}[section]
+%
+%%\renewcommand{\rmdefault}{phv} % Arial
+%%\renewcommand{\sfdefault}{phv} % Arial
+
+\definecolor{MyDarkBlue}{rgb}{0 0.08 0.45}
+\definecolor{MyDarkOrange}{rgb}{1 0.5 0}
+\definecolor{MyDarkGreen}{rgb}{0 0.25 0}
+\definecolor{MyDarkTerracota}{rgb}{0.5 0 0}
+\definecolor{MyDarkGrey}{rgb}{0.25 0.25 0.25}
+
+\begin{document}
+\begin{center}
+{\sc EST-25134: Aprendizaje Estad\'istico} -- ITAM\\
+\vspace{0.1cm}
+Primavera 2017\\
+\vspace{0.1cm}
+Sesi\'on 01
+\end{center}
+
+
+\def\dsp{\def\baselinestretch{0.7}\large\normalsize}\dsp
+
+%
+%	Funciones de distribuci\'on
+%
+\section*{\normalsize Funciones de distribuci\'on}
+\noindent
+Traten de identificar el kernel y constante de normalizaci\'on en las siguientes distribuciones:
+\begin{itemize}
+	\item {\it Distribuci\'on Bernoulli.-} Para $X$ v.a. con soporte en $\mathcal{X}=\{0,1\}$, la funci\'on de masas de probabilidades es,
+	\begin{equation}
+	f_X(x|\alpha,\beta)=\alpha^{x}(1-\alpha)^{1-x}\boldsymbol{1}_{\{0,1\}}(x),
+	\end{equation}
+	con $0<\alpha<1$.
+	\item {\it Distribuci\'on beta.-} Para $X$ v.a. con soporte en $\mathcal{X}=(0,1)$, la funci\'on de densidad,
+		\begin{equation}
+		 f_X(x|\alpha,\beta)=\frac{\Gamma(\alpha+\beta)}{\Gamma(\alpha)\Gamma(\beta)}
+		 x^{\alpha-1}(1-x)^{\beta-1}\boldsymbol{1}_{(0,1)}(x),
+		\end{equation}
+	con $\alpha,\beta > 0$.
+	\item {\it Distribuci\'on multinomial.-} Para $X$ variable aleatoria con soporte en $\mathcal{X}=\{0,1\}^K$, con $K$ finito y conocido, tenemos que la funci\'on de masas de probabilidades es,
+		\begin{equation}
+		f_X(x|\alpha_1,\ldots,\alpha_K)=\prod_{k=1}^{K}\alpha_k^{x_k}\boldsymbol{1}_{\{0,1\}^K}(x),
+		\end{equation}
+		donde $\alpha_k \geq 0$ y $\sum_{k=1}^{K}=1$.
+	\item {\it Distribuci\'on Dirichlet.-} Para $X$ v.a. con soporte en $\mathcal{X}=\mathcal{S}_K$ (simplex de dimensi\'on $(K-1)$), de tiene que la funci\'on de densidad es,
+		\begin{equation}
+		f_X(x|\alpha_1,\ldots,\alpha_K)=\frac{\Gamma(\alpha_0)}{\Gamma(\alpha_1)\cdots \Gamma(\alpha_K)}
+		\prod_{k=1}^{K}x_k^{\alpha_k}\boldsymbol{1}_{\mathcal{S}_K}(x),
+		\end{equation}
+		donde $\alpha_0=\sum_{k=1}^{K}\alpha_k$, con $\alpha_k > 0$.
+\end{itemize}
+%=======================================================
+%		References
+%=======================================================
+\bibliographystyle{chicago}
+\bibliography{References_JCMO}
+
+\end{document}
+%
+%	-- FIN --

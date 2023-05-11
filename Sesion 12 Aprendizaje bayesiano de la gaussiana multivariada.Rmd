@@ -1,0 +1,178 @@
+---
+title: "Sesion 12: Aprendizaje bayesiano de la gaussiana multivariada"
+author: "Juan Carlos Martinez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Objetivo
+
+Dado un conjunto de datos $x_1,\ldots,x_n$ de vectores $p$-dimensionales, como estimar la media, $\mu$ y covarianzas $\Sigma$ (o precision $\Lambda$) si se modelan con la distribucion gaussiana $p$-variada.
+
+# Distribuciones
+
+La distribucion de los datos, condicional en $\mu$ y $\Sigma$ es 
+$$
+\mathbb{P}(x_1,\ldots,x_n|\mu,\Sigma)
+= \prod_{i=1}^{n}N(x_i|\mu,\Sigma),
+$$
+si trabajamos con la matriz de convarianzas. Sin embargo, resulta conveniente trabajar con la reparametrizacion de la distriucion en terminos de la precision 
+$$
+\Lambda=\Sigma^{-1}.
+$$ 
+Asi, la verosimilitud, que es la distribucion conjunta de los datos, es
+$$
+\mathbb{P}(x_1,\ldots,x_n)
+= \prod_{i=1}^{n}N(x_i|\mu,\Lambda).
+$$
+
+Concentremonos en la ultima parametrizacion. La **distribucion inicial** mas conveniente para trabajar con este modelo es la conjugada para $(\mu,\Lambda)$ dada por
+$$
+p(\mu,\Lambda)=p(\mu|\Lambda)p(\Lambda),
+$$
+donde 
+$$
+p(\mu|\Lambda) = N(\mu|m_0,s_0\Lambda)\\
+p(\Lambda) = Wi(\Lambda|a_0,S_0),
+$$
+
+* $m_0$ es el vector medio inicial para $\mu$
+
+* $s_0\Lambda$ es la precision inicial de $\mu$
+
+* $a_0 S_0^{-1}$ es la matriz media inicial de $\Lambda$
+
+* $(m_0,s_0,a_0,S_0)$ son hipermarametros.
+
+La distribucion $p(\mu,\Lambda)$ se conoce como normal-Wishart. 
+
+_Esta distribucion es conveniente de usar en la practica, pues es conjugada para el modelo normal $p$-variada_.
+
+## Aprendizaje
+
+La distribucion final o posterior para $(\mu,\Sigma)$ resulta ser normal-Wishart (consecuencia de la conjugacidad del modelo). 
+
+_Es decir, es la misma distribucion inicial actualizando sis correspondientes hiper-parametros con la informacion contenida en los datos._
+
+La forma particular de la distribucion es como sigue:
+$$
+p(\mu,\Lambda|x_1,\ldots,x_n)=p(\mu|\Lambda,x_1,\ldots,x_n)p(\Lambda|x_1,\ldots,x_n),
+$$
+donde 
+$$
+p(\mu|\Lambda,x_1,\ldots,x_n) = N(\mu|m_n,s_n\Lambda)\\
+p(\Lambda|x_1,\ldots,x_n) = Wi(\Lambda|a_n,S_n),
+$$
+donde 
+
+$$
+s_n = s_0 + n\\
+m_n = \frac{s_0 m_0 + n \bar{x}}{s_n} \\
+a_n = a_0 + n/2\\
+S_n = S_0 + (n/2)\left(\bar{S}+\frac{s_0}{s_n}(\bar{x}-m_0)(\bar{x}-m_0)'\right)
+$$
+
+con
+
+$$
+\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i\\
+\bar{S}=\frac{1}{n}\sum_{i=1}^{n}(x_i-\bar{x})(x_i-\bar{x})'.$$
+
+## Prediccion
+
+Con base en los datos $x_1,\ldots,x_n$, muestra de `entrenamiento`, se obtiene la distribucion predictiva para una muestra de `prueba` como 
+
+$$
+\mathbb{P}(x_{n+1},\ldots,x_{n+m}|x-1,\ldots,x_n)
+= \int_{\mathbb{R}^{p}\times \mathbb{M}^{p\times p}}
+\prod_{j=1}^{m}N(x_{n+m}|\mu,\Lambda)p(\mu,\Lambda|x_1,\ldots,x_n)d\mu d\Lambda,
+$$
+donde $\mathbb{M}^{p\times p}$ es el epsacio de matrices de dimension $p times p$ simétricas positivo definidas.
+
+En el caso donde $m=1$ la distribucion predictiva es $t$-$p$-dimensional, dada por
+
+$$
+\mathbb{P}(x_{n+1}|x_1,\ldots,x_n)
+= 
+t\left(x_{n+1}|\tilde{m}_n,\tilde{S}_n,\tilde{v}_n\right),
+$$
+
+donde 
+
+$$
+\tilde{m}_n = m_n\\
+\tilde{S}_n = \frac{s_n\left(a_n-\frac{p-1}{2}\right)}{s_n+1}S_n^{-1}\\
+\tilde{v}_n = 2 a_n - p + 1. 
+$$
+
+Aqui, $\tilde{mu}_n$ es el parametro de localizacion, $\tilde{S}_n$ es el parametro de escala y $\tilde{v}_n$ es el parametro de sesgo o `grados de libertad`.
+
+## Ejemplos
+
+### 1) Datos simulados
+
+Consideremos dos ejemplos con 
+
+* $n = 132$
+
+* $\mu = (10, 7)'$ 
+
+* Covarianza $C = [4, −0.7, −0.7, 0.25]$, i.e. correlacion  igua a $\rho = −0.7$.
+$$
+
+```{r}
+rm(list=ls())
+n <- 132
+mu <- matrix(c(10,7))
+C <- matrix(c(4, −0.7, −0.7, 0.25),ncol=2,nrow=2)
+L <- solve(C)
+```
+
+### 2) Datos reales
+
+```{r}
+rm(list=ls())
+setwd("C:/JCMO.Trabajo/@Mis.Cursos/2017-A_Aprendizaje Estadistico/sesiones/")
+load("StockPrices.Rdata")
+datos <- data4analysis_r[-1,]
+head(datos)
+
+require("MASS")
+```
+
+#### APPL vs MSFT
+
+```{r}
+plot(datos[,1], datos[,2])
+bivn.kde <- kde2d(datos[,1],datos[,2],n=10) 
+image(bivn.kde)
+contour(bivn.kde, add=TRUE)
+````
+
+#### APPL vs YHOO
+
+```{r}
+plot(datos[,1], datos[,3])
+bivn.kde <- kde2d(datos[,1],datos[,3],n=10) 
+image(bivn.kde)
+contour(bivn.kde, add=TRUE)
+````
+
+#### MSFT vs YHOO
+
+```{r}
+plot(datos[,2], datos[,3])
+bivn.kde <- kde2d(datos[,2],datos[,3],n=10) 
+image(bivn.kde)
+contour(bivn.kde, add=TRUE)
+````
+
+## Referencias
+
+* **Bishop** - Pattern Recognition and Machine Learning. 
+
+* **Murphy** - Conjugate Bayesian analysis of the Gaussian distribution

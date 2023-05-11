@@ -1,0 +1,180 @@
+---
+title: "Sesion 14: Reduccion de dimensionalidad"
+author: "Juan Carlos Martinez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### **Resumen y objetivos**
+
+* Revisaremos los fundamentos del analisis de factores y el papel que juegan las variables latentes en su formulacion.
+
+* dada la inclusion de variables latentes, revisaremos como se implementa el _aprendizaje bayesiano_ en esta clase de modelos.
+
+* Presentaremos alguans ilustraciones.
+
+## B. Analisis de factores
+
+### B-1) Datos
+
+```{r}
+rm(list=ls())
+setwd("/home/jcmo/JCMO.Trabajo/@Mis.Cursos/2017-A_Aprendizaje Estadistico/sesiones")
+
+data <- read.csv("FA/MCMC_FactAnal.csv",header=TRUE, sep=",",na.strings="NA", dec=".", strip.white=TRUE)
+summary(data)
+head(data)
+```
+
+### B-2) Aprendizaje frecuentista
+
+```{r}
+fa.1 <- factanal(~., factors = 4, rotation = "varimax", data = data)
+fa.1
+
+print(fa.1, digits = 3, cutoff = .000001)
+```
+
+### B-3) Aprendizaje bayesiano
+
+Emplea MCMC.
+
+```{r}
+require("MCMCpack")
+help(MCMCfactanal)
+fa.2 <- MCMCfactanal(~x1+x2+x3+x4+x5+x6+x7+x8, 
+        factors = 2, data = data, burnin = 1000, 
+        mcmc = 10000, thin = 10, verbose = 0, seed = NA,
+        lambda.start = NA, psi.start = NA, l0 = 0, L0 = 0, 
+        a0 = 0.001, b0 = 0.001, store.scores = FALSE, std.var = TRUE)
+summary(fa.2)
+plot(fa.2)
+heidel.diag(fa.2)
+```
+
+```{r}
+# Extracting elements of the output. 
+
+### First, the loadings (Lambda). 
+
+loadings <- summary(fa.2)$statistics[1:16]
+loadings
+
+# Factor 1 item loadings (items x1, x2, x3, x4).
+
+factor1.item.loadings <- loadings[c(1,3,5,7)]
+factor1.item.loadings
+
+# Factor 2 item loadings (items x5, x6, x7, x8).
+
+factor2.item.loadings <- loadings[c(10,12,14,16)]
+factor2.item.loadings
+
+# Extract the 95% Credible Interval estimates of each loading.
+
+ci.loadings <- summary(fa.2)$quantiles[1:16,c(1,5)]
+ci.loadings
+
+# Factor 1 item loading intervals (items x1, x2, x3, x4).
+
+factor1.ci.loadings <- ci.loadings[c(1,3,5,7),]
+factor1.ci.loadings
+
+# Factor 2 item loading intervals (items x5, x6, x7, x8).
+
+factor2.ci.loadings <- ci.loadings[c(10,12,14,16),]
+factor2.ci.loadings
+
+### Extract the uniquenesses (Psi). 
+
+uniquenesses <- data.frame(summary(fa.2)$statistics[17:24],
+                           names(data))
+names(uniquenesses)[1] <- "uniquenesses"
+uniquenesses
+
+# Extract the 95% Credible Interval estimates of each uniqueness.
+
+ci.unique <- summary(fa.2)$quantiles[17:24,c(1,5)]
+ci.unique
+
+# Calculate the Communalities for each item.
+
+communalities <- data.frame(1 - uniquenesses[,1], names(data))
+names(communalities)[1] <- "communalities"
+communalities
+```
+
+```{r}
+################################################################################
+
+# Here constraining the loadings (Lambda) so that the first four items load exclusively on 
+# factor 1 and not on factor 2; as well as ensuring the second four items load on factor 2 
+# and not on factor 1; for instance, item "x1" is constrained on factor 2 to have a loading 
+# of zero [e.g. x1=c(2,0)]. One could say this is a more 'confirmatory' strategy; which seems 
+# appropriate when taking a Bayesian approach (i.e. the specification of a prior, which 
+# is necessary; indicates an exploratory factor analysis was done previoiusly or previous
+# research has established the structure of the measure). 
+
+fa.3 <- MCMCfactanal(~x1+x2+x3+x4+x5+x6+x7+x8, 
+        factors = 2, data = data, 
+        lambda.constraints=list(x1=list(2,0), 
+        x2=c(2,0), x3=list(2,0), x4=c(2,0),
+        x5=list(1,0), x6=c(1,0), x7=list(1,0), x8=c(1,0)),
+        burnin = 1000, mcmc = 10000, thin = 10, verbose = 0,
+        seed = NA, lambda.start = NA, psi.start = NA, 
+        l0 = 0, L0 = 0, a0 = 0.001, b0 = 0.001, 
+        store.scores = FALSE, std.var = TRUE)
+summary(fa.3)
+
+# Notice in the summary (above) the loadings are substantially greater than the previous MCMCfactanal,
+# and the items are not allowed to cross-load (i.e. load on a factor they should not). In the situation 
+# where items are thought to load on multiple factors, constraints can be used to specify how 
+# each item loads on each factor (positive / negative; or magnitude of the loading for each factor). 
+
+# Below, running the Heidel diagnostic test (from package 'coda') confirms stationarity was achieved. 
+
+heidel.diag(fa.3)
+
+# Also, the densities for the loadings are more normally distributed. 
+
+plot(fa.3)
+
+
+ls()
+
+# NOTE: The 'MCMCpack' package also contains a function for doing MCMC factor analysis 
+# with mixed data (i.e. continuous and ordinal variables).
+
+help(MCMCmixfactanal)
+
+
+################################################################################
+
+# Martin, A. D., Quinn, K. M., & Park, J. H. (2010). Package 'MCMCpack'. 
+# Package Reference Manual available at:
+# http://cran.r-project.org/web/packages/MCMCpack/MCMCpack.pdf
+
+# Plumer, M., Best, N., Cowles, K, & Vines, K. (2010). Package 'coda'. 
+# Package Reference Manual available at:
+# http://cran.r-project.org/web/packages/coda/coda.pdf
+
+
+
+
+
+# End: 7 Jan. 2010.
+
+```
+
+## Referencias
+
+* **Alpaydin** -- Capitulo 6 
+
+* **Barber** -- Capitulo 15 
+
+* **Hastie et al** -- Seccion 14.5
+
+

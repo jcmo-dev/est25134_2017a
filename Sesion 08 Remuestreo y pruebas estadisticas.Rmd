@@ -1,0 +1,429 @@
+---
+title: "S08 - Remuestreo y pruebas estadisticas"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+library(ggplot2)
+library(dplyr)
+```
+
+# Objetivo
+
+* Revisar el procedimiento de remuestreo dentro del contexto de pruebas estadisticas.
+
+* Comprender su conexion con el paradigma bayesiano de aprendizaje.
+
+
+# I. Introduction
+
+Los metodos de remuestreo se emplean en diferentes contextos dentro del aprendizaje estadistico. Particularmente, en el contexto de pruebas estadísticas (o pruebas de hipotesis) proveen herramientas para extender las soluciones analíticas de los problemas simplificados a una vision mas intuitiva.
+
+A traves de los metodos de remuestreo, podemos enriquecer la vision de las pruebas estadisticas de la siguiente forma.
+
+<center>![one test](Figures/one.test.jpg)</center>
+
+Siguiendo el diagrama:
+
+* El *efecto observado*, que denotamos por $\delta^*$ es el valor calculado por una estadística de prueba elegida sobre los datos observados.
+
+* La hipótesis nula $H_0$ representa al modelo bajo el cual $\delta^*$ es aleatorio.
+
+* La estadística de prueba es una medida elegida de la diferencia entre los datos (observados o simulados) con respecto a $H_0$.
+
+De manera general:
+
+* La probabilidad que debemos calcular es 
+$$
+\mathbb{P}(\delta^*|H_0).
+$$
+
+_Valores pequenos de $\mathbb{P}(\delta^*|H_0)$ sugieren que el efecto $\delta^*$ es probablemente congruente con la realidad y no debido al azar._
+
+La probabilidad anterior, puede calcularse>
+
+a. directamente con los datos observados (como las pruebas estadisticas usualmente se implementan), o 
+
+b. _enriqueciendo_ la informacion obtenidad con base en un conjunto de datos simulados bajo $H_0$. 
+
+**El calculo (b) de esta probabilidad se conoce como el estimador de Monte Carlo. En particular, cuando el calculo de la probabilidad de la region critica se conoce como _p-value_ de Monte Carlo, o $p^{MC}$-value.**
+
+Usualmente, el estimador de Monte Carlo del _p-value_ 
+$$
+\mathbb{P}(\delta^* \text{o más efectos extremos} | H_0),
+$$
+puede expresarse como el cociente del numero de efectos observados en los datos simulados, $r$, sobre el número total de efectos simulados, $n$. 
+Esta aproximacion puede subestimar el _p-value_, por lo que se sugiere emplear la siguiente corrección:
+$$
+p^{MC}\text{-value} = \frac{r+1}{n+1}.
+$$
+
+El estimador $p^{MC}$-value puede codificarse en `R` de la siguiente forma:
+
+```{r pMCvalue}
+pMC.value <- function(results, observed.effect, precision=3){
+  # numero de simulaciones/replicas
+  n <- length(results)
+  # numero de efectos superiores al observado
+  r <- sum(abs(results) >= observed.effect)  
+  # correccion del p-value de MC con correccion
+  list(mc.p.value=round((r+1)/(n+1), precision), r=r, n=n)
+}
+```
+
+La siguiente funcion agrega los resultados en la forma de un histograma:
+
+```{r pCMvalue_summary}
+pMC.value.summary <- function(results, observed.effect,  label=""){
+  lst <- pMC.value(results, observed.effect)
+  hist(results, breaks=50, prob=T, main=label,
+       sub=paste0("pMC-value bajo H0: ", lst$mc.p.value),
+       xlab=paste(lst$r, " de ", lst$n, "replicas"))
+  abline(v=observed.effect, lty=2, col="red")
+}
+```
+
+Sintetizando el procedimiento para la prueba estadistica:
+
+1. Definimos una hipotesis nula $H_0$ (suponiendo que el efecto que deseamos probar es debido al azar)
+2. Elegimos una estadistica de prueba
+3. Definimos un modelo estocastico bajo $H_0$ (para producir los datos simulados de Monte Carlo)
+4. Producimos los datos simulados bajo $H_0$ 
+5. Calculamos $p^{MC}$-value y corroboramos $H_0$
+
+-----
+
+**Aspecto de dependencia estocastica**
+
+La simulación de Monte Carlo bajo $H_0$ presupone que que todas las permutaciones de datos son igualmente (bajo $ H_0 $). Esto es, sugiere que los datos son **intercambiabiables** (pues la probabilidad es invariante ante tales permutaciones)
+
+El procesimiento *bootstrap* presupone que las diferentes `remuestras`  de los datos originales son independientes entre si.
+
+-----
+
++ En ocasiones, producir las simulaciones de Monte Carlo puede ser computacionalmente costoso; en ese caso, podemos tomar atajos computacionales. Cuando sea el caso, recordemos revisar los supuestos del procedimiento e implicaciones de las simplificaciones que realicemos.
+
+# II. Ejemplos
+
+En los siguientes ejemploe haremos uso de los siguientes paquetes en `R`:
+
+```
+install.packages("bayesboot")
+install.packages("xtable")
+install.packages("gtools")
+install.packages("boot")
+install.packages("bayesboot")
+```
+
+## E1) Sustitución de las pruebas $t$
+
+En este ejemplo definimos una prueba $t$ por permutacion en contraste con la prueba $t$ tradicional.
+
+```{r e1_datos}
+data <- list(
+  experiment = c(27,20,21,26,27,31,24,21,20,19,23,24,28,19,24,29,18,20,17,31,20,25,28,21,27),
+  control    = c(21,22,15,12,21,16,19,15,22,24,19,23,13,22,20,24,18,20))
+summary(data)
+```
+
+----
+
+**Hipotesis nula $H_0$**
+
+El modelo bajo $H_0$ supone que los datos de ambos `experiment` y `control` son iguales. Los datos enteros serán remuestreados para producir conjuntos de datos artificiales que se compararán con los datos reales.
+
+Este es el modelo estocástico que sigue a $H_0$. Bajo $H_0$ no habria ningún problema en mezclar datos de `experiment` y `control`.
+
+----
+
+La función `resampling` genera `n` datos permutados aleatoriamente entre los conjuntos de datos `experiment`/`control`.
+
+```{r resampling}
+resampling <- function(n, data, test.statistic){
+  # consolidamos los datos
+  all.data <- c(data$experiment, data$control)
+  # genera `n` permutaciones aleatorias de los indices
+  permutations <- replicate(n, 
+                            sample(1:length(all.data),
+                                    length(data$experiment)))
+  # `apply` efectua la prueba estadistica para cada permutacion
+  apply(permutations, 2, function(permutation) {
+    # all.data[ permutation] es una juestra de `experiment`
+    # all.data[-permutation] es una muestra de `control`
+    test.statistic(all.data[permutation], all.data[-permutation])
+  })
+}
+```
+
+----
+
+**Estadisticos de prueba**
+
+Elegimos dos estadísticos de prueba para comprobar dos hipótesis diferentes:
+
++ *Diferencia en medias*, i.e. representa `experiment` una mejora sobre los datos `control`? (Aquí, un valor más alto es mejor).
+
++ *Diferencia en varianzas*, i.e. corroborar si las varianzas en ambos grupos de datos iguales.
+
+----
+
+En `R` los estadisticos de prueba se calculan con las siguientes funciones:
+
+```{r e1_estadisticos}
+diff.means <- function(x,y) mean(x) - mean(y) 
+diff.vars  <- function(x,y) var(x)  - var(y)  
+```
+
+Aplicamos ahora las pruebas basadas en permutaciones:
+
+```{r e1_resampling}
+# numero de permutaciones aleatorias
+n.resamplings <- 1e4
+# remuestreo aleatorio
+stats <- resampling(n.resamplings, data, diff.means)
+
+pMC.value.summary(stats, diff.means(data$experiment, data$control), 
+                label="Diferencia de medias")
+
+stats <- resampling(n.resamplings, data, diff.vars)
+pMC.value.summary(stats, diff.vars(data$experiment, data$control), 
+                label="Diferencia de varianzas")
+```
+
+----
+
+**Conclusiones**
+
+* Respecto a la _diferencia de medias_, observamos quelas permutaciones aleatorias proveen fuerte evidencia contra $H_0$, i.e. el efecto observado es muy probablemente no debido al azar/hay diferencia en medias.
+
+* Respecto a la _diferencia de varianza_, la simulación favorece $H_0$, es decir, la diferencia de varianzas se debe probablemente al azar/no hay diferencia de varianzas. 
+
+----
+
+# III. *Bootstrap* bayesiano
+
+La idea básica detras del procedimiento *bootstrap* es que la inferencia sobre una población a partir de datos de una `muestra` puede ser modelada mediante el remuestreo de los datos de la `muestra`, i.e. `remuestra`, y la realización de la inferencia en cada `remuestra`.
+
+Se emplea cuando:
+
+* La distribución teórica de una estadística de interés es complicada o desconocida (dado que el procedimiento de *bootstrap* es independiente de la distribución de los datos).
+
+* El tamaño de la muestra es insuficiente para la inferencia estadística directa. 
+
+El procedimiento *bootstrap* utiliza simulaciones de Monte Carlo para volver a muestrear muchos conjuntos de datos basados en los datos originales. Estas `remuestras` se usan para estudiar la variación de una estadística de prueba dada.
+
+
+<!--
+Here's a simple eg: one knows a sample of size 30 from a population with $\mathcal{N}(0,1)$ distribution. In practice we don't know the population distribution (otherwise, the bootstrap would not be needed), but let's assume that in order to compare results. Say, we wish to find out about the variation of its mean:
+
+-->
+
+* El procedimiento *bootstrap* estandar genera `remuestras` con remplazo de los datos observados. Esto quiere decir que los pesos de las remuestras siguien una distribucion multinomial. 
+
+* Una **interpretacion bayesiana** del procedimiento *bootstrap* consiste en complementar la distribucion de las `remuestras` asignando una distribucion Dirichlet a los pesos.
+
+En el siguiente ejemplo se muestra como opera la interpretacion bayesiana del procedimiento.
+
+## E2) Variabilidad en la media
+
+Se conoce una muestra de tamaño $30$ de una población con distribucion $N(x|0,1)$. Suponemos que *NO* sabemos la distribución de la población (de lo contrario, no sería necesario el *bootstrap*), pero deseamos averiguar la variabilidad acerca del estimador de la media (empleando la media aritmetica).
+
+El siguiente script muestra la variabilidad de la `media aritmetica` medida por remuestreo.
+
+```{r e2_boot}
+set.seed(333)
+my.sample <- rnorm(30)
+
+test.statistic <- mean
+n.resamplings  <- 5e4
+
+# obtenemos las `remuestras` bootstrap
+boot.samples <- replicate(n.resamplings, 
+                          test.statistic(sample(my.sample, 
+                                                replace=TRUE)))
+# comparamos con los calculos obtenidos de la muestra
+real.samples <- replicate(n.resamplings, 
+                          test.statistic(sample(rnorm(30), 
+                                                replace=TRUE)))
+
+plot( density(real.samples), ylim=c(0,2.5), main="Distribucion boostrap")
+lines(density(boot.samples), col="red")
+abline(v=0, lty=2) # true value
+legend("topright", 
+       c("muestra", "bootstrap", "verdadera"), 
+       col=c(1,2,1), lty=c(1,1,2))
+```
+
+Mostramos ahora la interpretacion bayesiana del problema en el siguiente script:
+
+```{r e2_bootbayes}
+require("gtools")
+set.seed(333)
+# numero de `remuestras` bootstrap
+n.resamplings <- 5e4
+
+# estadistica de prueba - media aritmetica
+mean.bb <- function(x, n){
+  apply( rdirichlet(n, rep(1, length(x))), 1, weighted.mean, x = x )
+  }
+# bootstrap bayesiano
+boot.bayes <- mean.bb(my.sample, n.resamplings)
+plot(density(real.samples), ylim=c(0,2.5), main="Distribucion boostrap bayesiana")
+lines(density(boot.bayes), col="red")
+quantile(boot.bayes, c(0.025, 0.975))
+abline(v=0, lty=2)
+legend("topright", 
+       c("muestra", "boot.bayes", "verdadera"), 
+       col=c(1,2,1), lty=c(1,1,2))
+```
+
+----
+
+**Comentarios**
+
+* En contraste con el *bootstrap frecuentista* que simula la distribución de muestreo de una estadística de estimación de un parámetro, el *bootstrap bayesiano* simula la distribución posterior.
+
+* El *boostrap frecuentista* puede implementarse empleando el `boot` package ([info](https://cran.r-project.org/web/packages/boot/index.html)).
+
+* El *bootstrap bayesiano* puede implementarse empleandoi el `bayesboot` package ([info](https://github.com/rasmusab/bayesboot)).
+
+----
+
+## E3) Calculo de intervalos de estimacion
+
+Consideramos los datos `experiment` y `control` del primer ejemplo (E1). Deseamos calcular los intervalos de estimacion (confianza/credibilidad) para la diferencia de las medias.
+
+La siguiente funcion produce las `remuestras` para ambos conjuntos de datos.
+
+```{r e3_resampling}
+resampling <- function(n, data, test.statistic) {
+  
+  size.experiment <- length(data$experiment)
+  size.control    <- length(data$control)
+
+  one.bootstrap <- function() {
+    boot.experiment <- sample(data$experiment, 
+                              size.experiment, replace=TRUE)
+    boot.control    <- sample(data$control, 
+                              size.control, replace=TRUE)
+    test.statistic(boot.experiment, boot.control)
+  }
+  
+  replicate(n, one.bootstrap())
+}
+```
+
+
+### Enfoque frecuentista
+
+Ejecutamos el procedimiento *bootstrap* y reutilizamos la funcion `pMC.value.summary` anterior. 
+
+* En este caso, el valor $p^{MC}$-value no tiene sentido, y debería estar alrededor de 50 por ciento. Es decir, la diferencia observada de medias deberia estar alrededor de la mediana de la distribución empírica de bootstrap.
+
+```{r e3_frec}
+n.resamplings <- 1e4
+stats <- resampling(n.resamplings, data, diff.means)
+pMC.value.summary(stats, diff.means(data$experiment, data$control))
+quantile(x=stats, probs = c(.025,.975))
+```
+
+----
+
+**Conclusion frecuentista**
+
+* En cuanto al intervalo de confianza, puesto que no se incluye el cero, podríamos decir que $H_0$, i.e. la diferencia de medios es aleatoria, _no está respaldada por evidencia._
+
+----
+
+### Enfoque bayesiano
+
+Comparamos ahora el _intervalo de confianza bootstrap_ con la prueba $t$ clásica y el *enfoque bayesiano*.
+
+```{r e3_bayesboot}
+require("bayesboot")
+
+experiment.means <- bayesboot(data$experiment, mean, R=1e4)
+control.means    <- bayesboot(data$control, mean, R=1e4)
+stats            <- (experiment.means - control.means)$V1
+# intervalo de confianza
+quantile(x=stats, probs = c(.025,.975))
+pMC.value.summary(stats, diff.means(data$experiment, data$control))
+```
+
+Si queremos calcular el $p^{MC}$-value, podríamos considerar los datos completos, *bootstrap* y luego dividir los datos simulados de acuerdo a los tamaños de los conjuntos de datos de `experiment` y `control` antes de aplicar la estadística de prueba elegida.
+
+Por ejemplo:
+
+```{r}
+resampling <- function(n, data, test.statistic) {
+  
+  all.data        <- c(data$experiment, data$control)
+  size.all.data   <- length(all.data)
+  size.experiment <- length(data$experiment)
+
+  one.bootstrap <- function() {
+    boot.all.data <- sample(all.data, size.all.data, replace=TRUE)
+    test.statistic(boot.all.data[1:size.experiment],
+                   # dividir los datos `bootstrap`
+                   boot.all.data[(size.experiment+1):size.all.data])
+  }
+  
+  replicate(n, one.bootstrap())
+}
+```
+
+Ahora, $p^{MC}$-value tiene sentido. El procedimiento bootstrap refleja la diferencia de medias entre el experimento observado y los datos de control:
+
+
+```{r}
+n.resamplings <- 1e4
+stats <- resampling(n.resamplings, data, diff.means)
+pMC.value.summary(stats, diff.means(data$experiment, data$control))
+```
+
+
+-----
+
+## Comentarios
+
+* Los metodos de remuestreo se **pueden emplear** en todos los procedimientos de *aprendizaje estadistico* (ya sea *inferencial* o *predictivo*)
+
+* Son generalmente computacionalmente costosos, en funcion del tipo de *problema/modelo* y *enfoque de aprendizaje*
+
+* Su implementacion puede sortearse empleando "aproximaciones"
+
+-----
+
+## Referencias
+
+* **Hastie et al** - Secciones 8.2-8.4
+
+* **James et al** - Capitulo 5
+
+* **Alpaydin** - Secciones 14.2-14.8
+
+* **Clark et al** - Capitulo 11
+
+* B. Efron - "Bootstrap Methods: Another Look at the Jackknife
+
+* D. Rubin - "The Bayesian Bootstrap"
+
+## Tarea
+
+1. Define una prueba $\chi^2$ basada en remuestreo para los siguientes datos:
+
+<center>
+```{r, echo=FALSE, results="asis", warning=FALSE}
+library(xtable)
+
+df <- data.frame(value=1:6, frequency=c(8,9,19,6,8,10))
+tab <- xtable(df, align="ccc")
+print(tab, type="html")
+```
+</center>
+
+2. Define como puedes interpretar el procedimiento `bootstrap` en un problema **predictivo**

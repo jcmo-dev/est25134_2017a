@@ -1,0 +1,343 @@
+---
+title: "S02 - Estimación de curvas (*regresion multidimensional*)"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+library(ggplot2)
+library(dplyr)
+
+```
+
+# Curvas de regresion
+
+## Especificacion empirica
+
+Una funcion de bases radiales es una funcion que mapea una superficie $p$-dimensional a la escala real, i.e. $f:\Re^{p}\rightarrow \Re$, tal que 
+$$
+f(\boldsymbol{x})=\sum_{j=0}^{\infty} \omega_j \phi_{j}(\boldsymbol{x}),
+$$
+donde $\phi(\boldsymbol{x})$ es una funcion que depende de la normal de $\boldsymbol{x}$ respecto a un centroide $\boldsymbol{c}_j$, i.e. $\phi_j(\boldsymbol{x}) = \phi(\|\boldsymbol{x}-\boldsymbol{c}_j\|)$ (cuando $\phi$ no este indizada por $j$ se refiere a una forma funcional base predefinida). La norma $\|\cdot\|$ a la que hace referencia la expresion anterior es tradicionalmente la norma euclidiana (en ocasiones, podremos trabajar con otro tipo de normas).
+
+Asi, la version empirica del modelo para una variable de respuesta $Y$ escalar, seria
+\begin{eqnarray}
+y|\boldsymbol{x}
+ &\sim&
+ N\left(y|f(\boldsymbol{x}),\sigma^{2}\right),
+\end{eqnarray}
+donde 
+$$
+f(\boldsymbol{x})=\sum_{j=0}^{J} \omega_j \phi_{j}(\boldsymbol{x}),
+$$
+donde $\{\boldsymbol{c}_j\}$ son un conjunto de centroides, qye deben ser estimados. El caso descrito corresponde al modelo homoscedastico. En esta especificacion consideramos:
+
+
+* Los pesos $\{\omega_j\}_{j=0}^{J}$ toman valores en la recta real y *deben ser estimados*
+
+* Los centroides $\{\boldsymbol{c}_j\}$ toman valores en $\Re^{p}$ y *deben ser estimados*
+
+* La funcion base $\phi(\cdot)$ es del tipo **gaussiana**, i.e.
+$$
+\phi(r)=\exp\{-\gamma r^{2}\},
+$$
+donde $\gamma$, que es el parametro escalar, **debe ser estimado**.
+
+
+Asi, la curva de regresion empirica toma la forma
+$$
+f(\boldsymbol{x})=\omega_0 + \sum_{j=1}^{J} \omega_j \exp\{-\gamma_j\|\boldsymbol{x}-\boldsymbol{c}\|^{2}\},
+$$
+donde $\{(\omega_j,\gamma_j,\boldsymbol{c}_j)\}_{j=1}^{J}$, $\omega_0$ y $\sigma^{2}$ son los parametros del modelo.
+
+### Tipos de funciones radiales
+
+Dentro de los tipos de funciones radiales con los que podemos trabajar, se encuentran:
+
+1. Gaussiana
+$$
+\phi(r)=\exp\{-\gamma r^{2}\}.
+$$
+```{r gaussian, echo=FALSE}
+# levels
+f <- function(x1,x2,gamma) exp(-0.3*(x1^2 + x2^2))
+seq(-10,+10,length=100) %>%
+  expand.grid(x1=.,x2=.) %>%
+  mutate(z=f(x1,x2)) %>%
+  ggplot +
+  aes(x=x1,y=x2,z=z) +
+  stat_contour(breaks=c(0.01,0.3,0.6,0.9))
+# Function phi
+f.rb1 <- function(r) exp(-0.3*r^2)
+f.rb2 <- function(r) exp(-3*r^2)
+f <- ggplot(data.frame(r = c(-10, 10)), aes(r))
+f + 
+  stat_function(fun = f.rb1, colour = "red") +
+  stat_function(fun = f.rb2, colour = "blue")
+```
+
+2. Funciones multicuadraticas
+$$
+\phi(r) = \sqrt{r^2 + \gamma^2}.
+$$
+```{r multicuad, echo=FALSE}
+# levels
+f <- function(x1,x2,gamma) sqrt((x1^2 + x2^2)+3^2)
+seq(-10,+10,length=100) %>%
+  expand.grid(x1=.,x2=.) %>%
+  mutate(z=f(x1,x2)) %>%
+  ggplot +
+  aes(x=x1,y=x2,z=z) +
+  stat_contour(breaks=c(0.01,0.3,0.6,0.9))
+# Function phi
+f.rb1 <- function(r) sqrt(r^2+0.3^2)
+f.rb2 <- function(r) sqrt(r^2+3^2)
+f <- ggplot(data.frame(r = c(-10, 10)), aes(r))
+f + 
+  stat_function(fun = f.rb1, colour = "red") +
+  stat_function(fun = f.rb2, colour = "blue")
+```
+
+3. *Thin plate spline*
+$$
+\phi(r) = r^2 \log(r).
+$$
+```{r spline, echo=FALSE}
+# levels
+f <- function(x1,x2) (x1^2 + x2^2)*log(sqrt(x1^2 + x2^2))
+seq(-10,+10,length=100) %>%
+  expand.grid(x1=.,x2=.) %>%
+  mutate(z=f(x1,x2)) %>%
+  ggplot +
+  aes(x=x1,y=x2,z=z) +
+  stat_contour(breaks=c(0.01,0.3,0.6,0.9))
+# Function phi
+f.rb1 <- function(r) r^2*log(r)
+f <- ggplot(data.frame(r = c(-10, 10)), aes(r))
+f + 
+  stat_function(fun = f.rb1, colour = "red")
+```
+
+4. Onduleta radial (*mexican hat*)
+$$
+\phi(r)=\frac{2}{(3\sigma\pi^{1/2})^{1/2}}\left(1-\frac{r^{2}}{\sigma^{2}}\right)\exp\left\{-r^{2}/2\sigma^{2}\right\}.
+$$
+
+4. Onduleta radial (*Marr*)
+$$
+\phi(r)=\frac{1}{\pi\sigma^{2}}\left(1-\frac{r^{2}}{2\sigma^{2}}\right)\exp\{-r^{2}/2\sigma^{2}\}.
+$$
+
+En las expresiones anteriores, $$r=\|\boldsymbol{x}-\boldsymbol{c}\|,$$
+corresponde a la distancia del punto $\boldsymbol{x}$ al centroide $\boldsymbol{c}$.
+
+
+### Intuicion
+
+Para una muestra de entrenamiento, $\mathcal{T}=\left\{y_i,\boldsymbol{x}_i\right\}_{i)1}^{n}$, la especificacion de las funciones base inducen:
+
+* Cada observacion $y_i$ es influenciada por $\boldsymbol{x}_i$ a traves de una vecindad entorno a diferentes vecindades $\boldsymbol{c}_j$s (*no observable* o *latente*)
+
+* El punto $\boldsymbol{x}_i$ que este dentro de alguna vecindad, influira sobre $y_i$ en funcion de la forma $\phi$ que se elija (*tipicamente gaussiana*)
+
+Veamos una ilustracion 
+```{r}
+rbf.gauss <- function(gamma=1.0){
+  function(x){
+    exp(-gamma * norm(as.matrix(x),"F")^2)
+    }
+  }
+
+D <- matrix(c(-3,1,4), ncol=1)
+N <- length(D[,1])
+
+xlim  <- c(-5,7)
+plot(NULL, xlim=xlim, ylim=c(0,1.25), type="n")
+points(D, rep(0,length(D)), col=1:N, pch=19)
+x.coord = seq(-7,7,length=250)
+gamma <- 1.5
+for (i in 1:N) {
+  points(x.coord, lapply(x.coord - D[i,], rbf.gauss(gamma)), type="l", col=i)
+}
+```
+
+<span style="color:blue">
+Obs.- El parametro de escala (en este caso, un **valor fijo**), determina el grado de importancia de un punto $\boldsymbol{x}$ sobre $y$.
+</span>
+
+```{r}
+plot(NULL, xlim=xlim, ylim=c(0,1.25), type="n")
+points(D, rep(0,length(D)), col=1:N,pch=19)
+x.coord = seq(-7,7,length=250)
+gamma <- 0.075
+for(i in 1:N){
+  points(x.coord, lapply(x.coord - D[i,], rbf.gauss(gamma)), type="l", col=i)
+  }
+```
+
+En la practica, necesitamos balancear la fonctribucion de cada punto en terminos de la funcion base *modulando* el valor de los parametros de escala. **Aunque en la practica, es posible estimar estos parametros, es realmente complicada su implementacion y requiere de una gran cantidad de datos de entrenamiento.**  
+
+## Implementacion
+
+Recordemos que los parametros del modelo anterior son $\omega_0$, $\left\{(\omega_j,\gamma_j,\boldsymbol{c}_j)\right\}_{j=1}^{J}$ y $\sigma^{2}$. Estimarlos simultaneamete puede ser complicado, pero es posible. Por el momento, consideremos una **version empirica simplicada**:
+
+<span style="color:blue">
+<< Version empirica simplificada >>
+
+* Fijar $J=n$ (i.e. en el numero de observaciones de la muestra de entrenamiento)
+
+* Fijar $\gamma_j = \gamma$, para todo $J$ con un *valor prestablecido*
+
+* Fija $\boldsymbol{c}_{j}=\boldsymbol{x}_j$, para $j=1,\ldots,n$.
+
+Entonces, los parametros del modelo se reducen a $ \boldsymbol{\omega}=(\omega_0,\omega_1,\ldots,\omega_n)$.
+
+Considerando la muestra de entrenamiento, $\mathcal{T}$, podemos obtener el estimador de $\boldsymbol{\omega}$ minimizando la suma de cuadrados de los errores, maxima versoimilitud y/o metodos bayesianos de aprendizaje. Eligiendo minimos cuadrados, 
+$$
+\hat{\boldsymbol{\omega}} = \arg\min_{\boldsymbol{\omega}} \sum_{i=1}^{n} \left(y_i-\omega_0-\sum_{j=1}^{n}\exp\{-\gamma\|\boldsymbol{x}_i-\boldsymbol{x}_j\|^{2}\}\right).
+$$
+</span>
+
+la forma matricial asociada con este modelo seria:
+
+$$
+\underbrace{
+  \left\lbrack
+  \array{
+   1 & \exp\{-\gamma \|x_1-x_1\|^2\} & \cdots & \exp\{-\gamma \|x_1-x_n\|^2\} \cr
+   1 & \exp\{-\gamma \|x_2-x_1\|^2\} & \cdots & \exp\{-\gamma \|x_2-x_n\|^2\} \cr
+    \vdots & \ddots & \vdots \cr
+   1 & \exp\{-\gamma \|x_n-x_1\|^2\} & \cdots & \exp\{-\gamma \|x_n-x_n\|^2\} \cr
+  }
+  \right\rbrack
+}_{\tilde{\boldsymbol{X}}_{J}} 
+\underbrace{
+\left\lbrack
+\array{
+\omega_0  \cr
+\omega_1  \cr
+\omega_2  \cr
+\vdots \cr
+\omega_n
+}
+\right\rbrack
+}_{\boldsymbol{\omega}}
+=
+\underbrace{
+\left\lbrack
+\array{
+y_1  \cr
+y_2  \cr
+\vdots \cr
+y_n
+}
+\right\rbrack
+}_{\boldsymbol{y}}.
+$$
+
+<span style="color:red">
+Ven algun problema en esta especificacion?
+</span>
+
+
+En este caso $\tilde{\boldsymbol{X}}_{J}$ no es una matriz cuadrada (por consiguiente, no es de rango completo), por lo que la solucion decansara en calcular la *pseudo inversa de la matriz* $\boldsymbol{S}_J=(\tilde{\boldsymbol{X}}_{J}'\tilde{\boldsymbol{X}}_{J})^{-1}$, en cuyo caso
+
+$$\hat{\boldsymbol{\omega}} = \boldsymbol{S}_J \tilde{\boldsymbol{X}}_{J}' y,$$
+es el estimador de minimos cuadrados de $\boldsymbol{\omega}$.
+
+```
+install.packages("RSNNS","corpcor")
+```
+
+### Ejemplo en R
+
+```{r, echo=FALSE}
+library("corpcor") # para calclar 'pseudoinverse()'
+```
+
+Simulamos datos de la base radial...
+```{r}
+# returns a rbf model given the:
+# * observations x1, xN of dataset D
+# * output value for each observation
+# * number of centers
+# * gamma value
+
+rbf.sim <- function(X, Y, K=10, gamma=1.0) {
+  # X - Variables (coordenadas) de regresion
+  # Y - Variable de respuesta
+  # K - Numero de funciones base
+  # gamma - Parametro de escala de la funcion base
+  N     <- dim(X)[1] # Numero de observaciones
+  ncols <- dim(X)[2] # Numero de covariables
+  
+  # Definimos la matriz de regresion modificada
+  X_j <- matrix(rep(NA,(K+1)*N), ncol=K+1)
+  lin <- 1
+  for (lin in 1:N) {
+    X_j[lin,1] <- 1    # contanteb (o sesgo)
+    for (col in 1:K) {
+      X_j[lin,col+1] <- exp( -gamma * norm(as.matrix(X[lin,]-mus[col,]),"F")^2 )
+    }
+  }
+  
+  w <- pseudoinverse(t(X_j) %*% X_j)  %*% t(X_j) %*% Y  # pesos RBF
+  
+  list(weights=w, centers=mus, gamma=gamma)  # estimates RBF
+}
+```
+
+Pseudo prediccion con el modelo de bases radiales
+```{r}
+rbf.predict <- function(model, X) {
+  
+  gamma   <- model$gamma
+  centers <- model$centers
+  w       <- model$weights
+  N       <- dim(X)[1] # Numero de observaciones
+  
+  pred <- rep(w[1],N)  # we need to init to a value, so let's start with the bias
+
+  for (j in 1:N) {  
+    # find prediction for point xj
+    for (k in 1:length(centers[,1])) {
+      # the weight for center[k] is given by w[k+1] (because w[1] is the bias)
+      pred[j] <- pred[j] + w[k+1] * exp( -gamma * norm(as.matrix(X[j,]-centers[k,]),"F")^2 )
+    }
+  }
+  
+  pred
+}
+```
+
+
+Un ejemplo, con la funcion real,
+$$
+f(x_1,x_2)=2\left(x_2-x_1+1/4 \sin *(\pi x_1)\right)-1,
+$$
+para los datos $x_1$ y $x_2$ en el intervalo $[-1,1]$. En R:
+```{r}
+factual <- function(x1, x2){
+  2*(x2 - x1 + .25*sin(pi*x1))-1
+  }
+
+N <- 500
+X <- data.frame(x1=runif(N, min=-1, max=1),
+                x2=runif(N, min=-1, max=1))
+Y <- factual(X$x1, X$x2)
+plot(X$x1,Y)
+plot(X$x2,Y)
+```
+
+
+## Tarea
+
+1. Definan una funcion *real objetivo*, y ejecuten ejercicios con el modelo planteado
+
+2. Elaboren ideas acerca de como estimar $(\gamma_j)_{j=1}^{J}$ y $\{\boldsymbol{c}_j\}_{j=1}^{J}$. 
+
+## Casi llegamos...
+* Que pasara cuando deseeemos estimar $J$ o cuando el tamano de la base de datos de entrenamiento sea muy grande?

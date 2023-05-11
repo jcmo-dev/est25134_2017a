@@ -1,0 +1,241 @@
+---
+title: "S06 - Clasificacion supervisada"
+author: "Juan Carlos Martínez-Ovando"
+date: "Primavera 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(digits=2)
+require("ggplot2")
+require("dplyr")
+
+```
+
+# Clasificacion supervisada
+
+## Clasificacion/Prediccion
+
+Empecemos con un poco de formalizacion teorica. Definimos $\text{train}=\{(y_i,x_i)\}_{i=1}^{n}$ y $\text{test}=\{(\tilde{y}_l,\tilde{x}_l)\}_{l=1}^{m}$ como las muestras de `entrenamiento` y de `prueba`.
+
+Consideramos que definimos un conjunto de modelos de clasificacion supervisada, 
+\begin{equation}
+\mathbb{P}_1(y_1,\ldots,y_m|x_1,\ldots,x_m)\\
+\vdots\\
+\mathbb{P}_K(y_1,\ldots,y_m|x_1,\ldots,x_m).
+\end{equation}
+
+Hasta el momento, estos modelos de clasificacion pueden ser los modelos logisticos, entrenados bajo el enfoque bayesiano o frecuentista de aprendizaje estadistico, o el modelo de maquina de soporte vectorial.
+
+Estructuralmente, todos estos modelos son distintos entre si. De hecho, no solo estructuralmente, sino tambien en terminos del paradigma de aprendizaje adoptado. 
+
+Con base en la muestra de entrenamiento, procedemos en tonces a generar la mejor prediccion/clasificacion posible de los $m$ datos de prueba, con base en su informacion intrinseca $\{\tilde{x}_l\}_{l=1}^{m}$ para cada modelo, i.e. para cada modelo generamos 
+\begin{equation}
+\left\{\tilde{x}_l\right\}_{l=1}^{m} \rightarrow \left\{y^{(k)}_l\right\}_{l=1}^{m}
+\end{equation}
+para $k=1,\ldots,K$ con base en $\widehat{\mathbb{P}_k}$ correspondiente.
+
+Con base en estas predicciones/clasificaciones, generaremos las comparaciones correspondientes de $\left\{y^{(k)}_l\right\}_{l=1}^{m}$ con las verdaderas $\left\{\tilde{y}_l\right\}_{l=1}^{m}$.
+
+Para que la comparacion tenga sentido cuando los modelos sean estructuralmente distintos, consideramos la construccion de la `matriz de confusion`, que se define como las tazas de coincidencias puntuales y errores de cada predictor. Esta se construye a partir de la variable de concidencia
+\begin{equation}
+w^{(k)}_l = \begin{cases}
+            1 & y^{(k)}_l=\tilde{y}_l\\
+            0 & \text{e.o.c.}
+            \end{cases}
+\end{equation}
+para $l=1,\ldots,m$. 
+
+Asi, la matriz de coincidencia absoluta, en el caso donde las $y_i$s tomen valores en $\{0,1\}$, se define como
+\begin{equation}
+C^{(k)} = \left[ {
+          \begin{array}{cc}
+          m^{(k)}_{00} & m^{(k)}_{10} \\       
+          m^{(k)}_{01} & m^{(k)}_{11} \      
+          \end{array} } 
+          \right]
+\end{equation}
+con $\sum_{jl} m^{(k)}_{jl}=m$, donde 
+\begin{eqnarray}
+m^{(k)}_{jl} 
+  & = &
+  \# \{y^{(k)}_l:y^{(k)}_l=\tilde{y}_l\}
+  \nonumber \\
+  & = &
+  \# \{w^{(k)}_l:w^{(k)}_l=1\},
+\end{eqnarray}
+para $j,l \in \{0,1\}$.
+
+En este procedimiento, partimos de la premisa que la muestra de `prueba` es mucho mas pequena que la muestra de `entrenamiento`, i.e.
+$$ m << n.$$
+Es convencional interpretar $\left\{y^{(k)}_l\right\}_{l=1}^{m}$ como el resultado de un procedimiento de etiquetacion $f^{(k)}$ sobre $\{\tilde{x}_l\}_{l=1}^{m}$, i.e.
+\begin{equation}
+y^{(k)}_l = f^{(k)}(\tilde{x}_l),
+\end{equation}
+para $l=1,\ldots,m$.
+
+Retomando, la `matriz de confusion`, los elementos fuera de la diagonal representan los errores de clasifiacion de los $K$ modelos (los cuales seran comunmente falibles).
+
+Ahora, procederemos a revisar algunos procedimientos estadisticos que nos permitiran `identificar` y `contrastar` que tan erroneos son los modelos entre si, y elegir el `mejor modelo`.
+
+## Criterios para evaluar prediccion
+
+Para definir el procedimiento de clasificacion de todos los modelos partimos del supuesto de considerar que la muestra de `prueba` es una muestra aleatoria (i.e. no existe un padron sesgado explicito sobre su seleccion asociado, en particular, con los valores observados de las $\tilde{y}_l$s).
+
+Empezamos suponiendo que tenemos dos clasificadores por contrastar, $\mathbb{P}_r$ y $\mathbb{P}_s$, para cualquier $r,s=1,\ldots,K$ y $r \neq s$, de tal forma que la hipotesis que deseamos comparar la definimos como
+\begin{equation}
+\mathbb{P}(f^{(r)}(\tilde{\boldsymbol{x}})=f(\tilde{\boldsymbol{x}}))
+=
+\mathbb{P}(f^{(s)}(\tilde{\boldsymbol{x}})=f(\tilde{\boldsymbol{x}}))
+\end{equation}
+donde $\tilde{\boldsymbol{x}}=\left\{\tilde{x}_l\right\}_{l=1}^{m}$, $f^{(r)}$ y $f^{(s)}$ son las reglas de asignacion de las etiquetas de ambos modelos --aprendidas con la misma muestra de `entrenamiento`, y $f$ es el "verdadero" clasificador de la muestra.
+
+En ambos casos de la ecuacion anterior, la probabilidad se calcula respecto a la distribucion de la muestra de entrenamiento '$\text{test}$', $\boldsymbol{x}=\{\tilde{x}_l\}_{l=1}^{m}$.
+
+### a) Prueba de McNemar
+
+Esta prueba consiste en definir una modificacion menor de la matriz de confusion, en la que ahora se agregan los errores de coasifiacion de los dos modelos $\mathbb{P}_{r}$ y $\mathbb{P}_{s}$, i.e. definimos 
+\begin{eqnarray}
+m_{00} 
+ & = & \text{numero de muestras mal clasificadas por }
+ \mathbb{P}_r\text{ y }\mathbb{P}_s
+ \nonumber \\
+m_{10} 
+ & = & \text{numero de muestras mal clasificadas por }
+ \mathbb{P}_r\text{ pero no por }\mathbb{P}_s
+ \nonumber \\
+m_{01} 
+ & = & \text{numero de muestras mal clasificadas por }
+ \mathbb{P}_s\text{ pero no por }\mathbb{P}_r
+ \nonumber \\
+m_{11} 
+ & = & \text{numero de muestras no mal clasificadas por }
+ \mathbb{P}_r\text{ y }\mathbb{P}_s
+ \nonumber
+\end{eqnarray}
+para $j,l \in \{0,1\}$. De esta forma, $m=m_{00}+m_{10}+m_{01}+m_{11}$
+
+Observen que en esta prueba, bajo la hipotesis nula que planteamos anteriormente, ambos modelos deberian tener tasas de error simetricas, i.e. $m_{01}=m_{10}$. Asi, bajo la hipotesis nula, los valores esperados son
+\begin{equation}
+\begin{array}{cc}
+  m_{00} & (m_{10}+m_{01})/2 \\       
+  (m_{01}+m_{10})/2 & m_{11}. \      
+\end{array} 
+\end{equation}
+
+La estadistica de pruba se define, en este caso, como
+\begin{equation}
+t=\frac{(|m_{10}-m_{01}|-1)^2}{m_{01}+m_{10}},
+\end{equation}
+la cual tiene distribucion $\chi^2$ con $1$ grado de libertad.
+
+Nota: El factor "$-1$"" en el numerador corresponde al factor de ajuste por continuidad de la estadistica (siendo esta intrinsecamente discreta).
+
+### b) Prueba de diferencia de proporciones
+
+Esta prueba consiste en medir la diferencia entre las tasas de error del model $\mathbb{P}_r$ y el modelo $\mathbb{P}_s$. Definimos asi, la tasa de clasificacion incorrecta por ambos modelos como
+\begin{eqnarray}
+p_r & = & \frac{m_{00}+m_{01}}{m} \nonumber \\
+p_s & = & \frac{m_{00}+m_{10}}{m}. \nonumber
+\end{eqnarray}
+
+Las tasas $p_r$ y $p_s$ pueden interpretarse, bajo la hipotesis nula, como la probabilidad de clasificacion erronea en ambos modelos. Suponiento `independencia` en la muestra de entrenamiento, tenemos que el numero de clasificaciones erroneas en ambos modelos sique una distribucion $Bin(n|m,p_r)$ y $Bin(n|m,p_s)$, respectivamente.
+
+Empleando la aproximacion normal para la distribucion binomial, tenemos que la diferencia $$p_r-p_s$$ tendra, bajo la hipotesis nula, una distribucion aproximada $N\left(\cdot|0,\text{d.e.}^{2}\right)$,
+donde 
+$$
+\text{d.e.} = \left(\frac{2p(1-p)}{m}\right)^{1/2},
+$$
+donde 
+$$
+p=(p_r+p_s)/2.
+$$
+
+Entonces, al estadistica de prueba sera definida como
+$$
+t= \frac{p_r-p_s}{\left(2p(1-p)/m\right)^{1/2}},
+$$
+la cual se distribuye aproximadamente $N(\cdot|0,1)$.
+
+
+### c) Prueba $t$ por remuestreo
+
+A partir de la muestra completa 
+$$
+S=\left\{(y_j,x_j)\right\}_{j=1}^{n+m},
+$$
+se definen una coleccion de $M$ muestras de `entrenamiento` y `prueba`,
+\begin{eqnarray}
+\text{train}^{(m)}
+  & = & \{(y^{(m)}_i,x^{(m)}_i)\}_{i=1}^{n}
+  \nonumber \\
+\text{test}^{(m)}
+  & = & \{(\tilde{y}^{(m)}_l,\tilde{x}^{(m)}_l)\}_{l=1}^{m}
+  \nonumber 
+\end{eqnarray}
+para $m=1,\ldots,M$ (con $M$ tipicamente fijada al rededor de $50$ cuando la muestra es sin reemplazo, o $M$ alrededor de $90$ cuando la muestra se construye con reemplazo).
+
+Como en la prueba (b) anterior, definimos para cada conjunto de muestras de `entrenamiento` y `prueba` las tasas de clasificacion erroneas
+\begin{eqnarray}
+p^{(m)}_r & = & \frac{m^{(m)}_{00}+m^{(m)}_{01}}{m^{(m)}} \nonumber \\
+p^{(m)}_s & = & \frac{m^{(m)}_{00}+m^{(m)}_{10}}{m^{(m)}}. \nonumber
+\end{eqnarray}
+para $m=1,\ldots,M$ (en este caso, la notacion en el denominador es redundante, pues $m^{(m)}$ es la misma para todas las replicas de remuestreo).
+
+De igual forma, definimos las $M$ diferencias de tasas de clasificacion,
+\begin{eqnarray}
+p^{(m)} = p^{(m)}_r-p^{(m)}_s,
+\end{eqnarray}
+para $m=1,\ldots,M$.
+
+El estadistico de prueba se define ahora como
+\begin{equation}
+t=\frac{\bar{p}M^{1/2}}{\left(\frac{\sum_{j=1}^{M}(p^{(j)}-\bar{p})^2}{M-1}\right)^{1/2}},
+\end{equation}
+donde $\bar{p}=(1/M)\sum_{j=1}^{M}p^{(j)}.$
+
+La estadistica $t$ tiene una distribucion $t$-Student con $(M-1)$ grados de libertad. 
+
+### d) Prueba $t$ via validacion cruzada
+
+Esta prueba es analoga a la prueba (c), solo que en este caso, en lugar de definir los pares de las muestras de `entrenamiento` y `prueba` dividiendo la muestra completa $S$ por remuestreo, se define una particion aleatoria de $S$ en $\left(S^{(k)}\right)_{k=1}^{K}$ de tal forma que cada $S^{(k)}$ sea de tamano $m^{(k)}$, con
+\begin{eqnarray}
+  S & = & \cup_{k=1}^{K} S^{(k)} \nonumber \\
+  \emptyset & = &
+  S^{(i)} \cap 
+  S^{(j)}, \ \ \  \text{ para todo } j\neq i.
+\end{eqnarray}
+Los $K$ conjuntos disjuntos de tamano $m^{(1)},\ldots,m^{(K)}$ son tales que  $nm=\sum_{k=1}^{K}m^{(k)}$.
+
+De acuerdo a esta particion de la muestra completa, se realizan $K$ pruebas de hipotesis, en las cuales las muestras de `entrenamiento` y `prueba` se deifinen como
+\begin{eqnarray}
+  \text{train}^{(k)} 
+    & = & S \backslash S^{(k)}
+    \nonumber \\
+  \text{test}^{(k)} 
+    & = & S^{(k)}.
+    \nonumber
+\end{eqnarray}
+
+De igual forma, definimos las $K$ diferencias de tasas de clasificacion,
+\begin{eqnarray}
+p^{(k)} = p^{(k)}_r-p^{(k)}_s,
+\end{eqnarray}
+para $k=1,\ldots,M$.
+
+El estadistico de prueba se define ahora como
+\begin{equation}
+t=\frac{\bar{p}K^{1/2}}{\left(\frac{\sum_{k=1}^{K}(p^{(k)}-\bar{p})^2}{K-1}\right)^{1/2}},
+\end{equation}
+donde $\bar{p}=(1/K)\sum_{k=1}^{M}p^{(k)}.$
+
+La estadistica $t$ tiene una distribucion $t$-Student con $(K-1)$ grados de libertad. 
+
+
+## Tarea
+
+* Discutan sobre las ventajas y desventajas que tienen las pruebas de hipotesis anterioes.
+
+* Desarrollen una funcion en R que implemente las cuatro pruebas anteriores.
+
